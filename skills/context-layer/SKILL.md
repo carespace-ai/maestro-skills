@@ -87,9 +87,16 @@ cloned repo and run it.
    `.claude/agents/context-layer-coordinator.md` (discovery),
    `context-layer-capture.md` (leaf node format), and
    `context-layer-synthesis.md` (parent/root format) — and apply them yourself:
-   - **Discover** the repo's systems (cohesive units with real logic; skip pure
-     UI/asset/type-only/generated/test dirs). For a monorepo, treat each
-     app/package as a container. Aim for ~4–10 leaf nodes.
+   - **Discover — enumerate EVERY module, then cover ALL that hold real logic.**
+     First list every candidate unit: for a monorepo, each app/package; otherwise
+     every top-level source dir (e.g. `src/*`, `lib/*`, `packages/*`, `cmd/*`).
+     A unit gets a leaf node **unless** it is purely UI/asset/type-only/DTO/
+     generated/test/config with no behavior. **There is NO cap on node count** —
+     coverage must be COMPLETE. A 30-module repo gets ~30 nodes, not 7. Do not
+     stop at the "important-looking" or cross-cutting/infra dirs; the domain/
+     business-logic modules are the ones that matter most and must each get a node.
+     If a repo has many tiny sibling modules, you MAY group them under one shared
+     parent node — but never silently drop a module with real logic.
    - **Capture**: for each system, read its real source (+ grep who-imports-what)
      and write `<system>/AGENTS.md` in the capture.md leaf format (Scope,
      Dependencies BOTH directions, Integration Points, Lifecycle, Ownership,
@@ -98,6 +105,11 @@ cloned repo and run it.
      (System Architecture ASCII, Data Flow, boundaries, dependency direction,
      downlinks) and deduplicate shared conventions to the least common ancestor.
    - Create every `CLAUDE.md → AGENTS.md` symlink (`ln -s AGENTS.md CLAUDE.md`).
+   - **Completeness self-check (required).** Before STEP 3, list the repo's real
+     source dirs and confirm each is either covered by a leaf node or intentionally
+     excluded (pure UI/asset/type/generated/test/config). Any real-logic module
+     without a node is a bug — go back and capture it. Print the coverage as
+     `covered=<n>/<total> modules` and name anything deliberately skipped + why.
 
    Follow those specs **exactly** — they are the source of truth for the node
    format. **Preserve** any pre-existing user-authored `AGENTS.md`/`CLAUDE.md`
@@ -109,8 +121,11 @@ cloned repo and run it.
    (The installed `.claude/agents/` + `.claude/skills/` files ship in the PR too,
    so a human later running "Build context layer" in-repo gets the real tooling.)
 
-   For very large repos (e.g. carespace-ui, carespace-sdk) **sample** rather than
-   read every file, and cap at ~6–10 top systems.
+   For very large repos (e.g. carespace-ui, carespace-sdk) sampling applies to the
+   files **inside** a module — read the entry/module/service/repository files, not
+   every file — to stay within budget. It does **NOT** reduce the number of
+   modules covered: every real-logic module still gets its own node. Trade depth
+   per node for breadth, never breadth for a shorter run.
 
 ## STEP 3 — Idempotent docs-only PR (reuse the existing Context Layer PR)
 
