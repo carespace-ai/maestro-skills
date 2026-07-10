@@ -1,4 +1,9 @@
 skills:
+  - name: context-layer
+    description: "Auto-regenerate a repo's Context Layer (hierarchical AGENTS.md/CLAUDE.md) on a default-branch push and open/update one idempotent docs-only PR. Triggered by a GitHub push webhook."
+    prompt: "/context-layer"
+    max_turns: 60
+
   - name: carespace-code-review
     description: "Autonomous PR security review — HIPAA/OWASP audit + code quality, posts findings as PR comment"
     prompt: "/carespace-code-review"
