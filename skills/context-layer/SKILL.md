@@ -1,7 +1,7 @@
 ---
 name: context-layer
 description: Auto-regenerate a repository's Context Layer (hierarchical AGENTS.md + CLAUDE.md nodes) whenever its default branch changes, and open/update one idempotent docs-only PR. Triggered by a GitHub push webhook via Maestro. Trigger keywords context layer, AGENTS.md, regenerate docs, push webhook, default branch changed.
-allowed-tools: Read, Write, Edit, Bash, Glob, Grep, Task, TodoWrite
+allowed-tools: Read, Write, Edit, Bash, Glob, Grep, TodoWrite
 ---
 
 # Context Layer — auto-update on push
@@ -79,26 +79,53 @@ cloned repo and run it.
    `.claude/agents/` and `context-layer.md` + `add-rule.md` into `.claude/skills/`,
    scaffolds `.context-layer/manifest.json`, and gitignores `.context-layer/`.
 
-2. **Build the layer** by invoking the installed **coordinator** — i.e. run
-   "Build context layer" per `.claude/agents/context-layer-coordinator.md`. The
-   coordinator:
-   - discovers the repo's systems,
-   - spawns a **`context-layer-capture`** agent per system (via the Task tool) to
-     write each `<system>/AGENTS.md`,
-   - runs **`context-layer-synthesis`** to build parent/root nodes (System
-     Architecture, Data Flow, boundaries, downlinks) and deduplicate,
-   - creates the `CLAUDE.md → AGENTS.md` symlinks.
+2. **Build the layer yourself, INLINE, following the installed agent specs as the
+   format contract.** You are already running as a headless Claude agent, so do
+   the coordinator's job directly rather than spawning sub-agents (sub-agent
+   fan-out inside a headless run is unreliable and adds nothing here — the output
+   is equivalent). Read the three specs you just installed —
+   `.claude/agents/context-layer-coordinator.md` (discovery),
+   `context-layer-capture.md` (leaf node format), and
+   `context-layer-synthesis.md` (parent/root format) — and apply them yourself:
+   - **Discover — enumerate EVERY module, then cover ALL that hold real logic.**
+     First list every candidate unit: for a monorepo, each app/package; otherwise
+     every top-level source dir (e.g. `src/*`, `lib/*`, `packages/*`, `cmd/*`).
+     A unit gets a leaf node **unless** it is purely UI/asset/type-only/DTO/
+     generated/test/config with no behavior. **There is NO cap on node count** —
+     coverage must be COMPLETE. A 30-module repo gets ~30 nodes, not 7. Do not
+     stop at the "important-looking" or cross-cutting/infra dirs; the domain/
+     business-logic modules are the ones that matter most and must each get a node.
+     If a repo has many tiny sibling modules, you MAY group them under one shared
+     parent node — but never silently drop a module with real logic.
+   - **Capture**: for each system, read its real source (+ grep who-imports-what)
+     and write `<system>/AGENTS.md` in the capture.md leaf format (Scope,
+     Dependencies BOTH directions, Integration Points, Lifecycle, Ownership,
+     State, Key Invariants, Patterns, Anti-patterns; ≤~2000 tokens; do not invent).
+   - **Synthesize**: write the parent/root `AGENTS.md` nodes per synthesis.md
+     (System Architecture ASCII, Data Flow, boundaries, dependency direction,
+     downlinks) and deduplicate shared conventions to the least common ancestor.
+   - Create every `CLAUDE.md → AGENTS.md` symlink (`ln -s AGENTS.md CLAUDE.md`).
+   - **Completeness self-check (required).** Before STEP 3, list the repo's real
+     source dirs and confirm each is either covered by a leaf node or intentionally
+     excluded (pure UI/asset/type/generated/test/config). Any real-logic module
+     without a node is a bug — go back and capture it. Print the coverage as
+     `covered=<n>/<total> modules` and name anything deliberately skipped + why.
 
-   Follow those agent specs **exactly** — they are the source of truth for the
-   leaf/parent/root node format. **Preserve** any pre-existing user-authored
-   `AGENTS.md`/`CLAUDE.md` (never clobber hand-written root docs — add alongside).
-   Since this is a HIPAA healthcare platform, the root node's **App Integration**
-   section should note how the repo connects to the rest of the CareSpace platform
-   and any **PHI/auth boundary** the code shows (code-observed only; mark uncertain
-   facts "unverified").
+   Follow those specs **exactly** — they are the source of truth for the node
+   format. **Preserve** any pre-existing user-authored `AGENTS.md`/`CLAUDE.md`
+   (never clobber hand-written root docs — add alongside). Since this is a HIPAA
+   healthcare platform, the root node's **App Integration** section should note how
+   the repo connects to the rest of the CareSpace platform and any **PHI/auth
+   boundary** the code shows (code-observed only; mark uncertain facts "unverified").
 
-   For very large repos (e.g. carespace-ui, carespace-sdk) tell the coordinator to
-   sample rather than read every file, and cap at ~6–10 top systems.
+   (The installed `.claude/agents/` + `.claude/skills/` files ship in the PR too,
+   so a human later running "Build context layer" in-repo gets the real tooling.)
+
+   For very large repos (e.g. carespace-ui, carespace-sdk) sampling applies to the
+   files **inside** a module — read the entry/module/service/repository files, not
+   every file — to stay within budget. It does **NOT** reduce the number of
+   modules covered: every real-logic module still gets its own node. Trade depth
+   per node for breadth, never breadth for a shorter run.
 
 ## STEP 3 — Idempotent docs-only PR (reuse the existing Context Layer PR)
 
