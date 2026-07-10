@@ -1,7 +1,7 @@
 ---
 name: context-layer
 description: Auto-regenerate a repository's Context Layer (hierarchical AGENTS.md + CLAUDE.md nodes) whenever its default branch changes, and open/update one idempotent docs-only PR. Triggered by a GitHub push webhook via Maestro. Trigger keywords context layer, AGENTS.md, regenerate docs, push webhook, default branch changed.
-allowed-tools: Read, Write, Edit, Bash, Glob, Grep
+allowed-tools: Read, Write, Edit, Bash, Glob, Grep, Task, TodoWrite
 ---
 
 # Context Layer — auto-update on push
@@ -60,36 +60,45 @@ git config user.email "context-layer@carespace.ai"
 ```
 For very large repos, do **not** read every file — sample strategically.
 
-## STEP 2 — Regenerate the Context Layer
+## STEP 2 — Regenerate the Context Layer (use the bundled tooling)
 
-Produce a hierarchy of `AGENTS.md` nodes, each with a sibling `CLAUDE.md` symlink
-(`ln -s AGENTS.md CLAUDE.md`). **Preserve** any pre-existing user-authored
-`AGENTS.md`/`CLAUDE.md` (never clobber hand-written root docs — add alongside).
+Use the **same** Context Layer tooling every repo received during the rollout — it
+is bundled with this skill under `tooling/` (the `context-layer-coordinator`,
+`context-layer-capture`, `context-layer-synthesis` agents + the `context-layer` /
+`add-rule` skills). Do **not** hand-roll the format — install the tooling into the
+cloned repo and run it.
 
-**Discover systems**: cohesive units with real logic (one job, clear boundaries).
-Skip pure UI/assets/type-only/generated/test dirs. For a monorepo, treat each
-app/package as a container of systems. Aim for ~4–10 leaf nodes.
+1. **Install the tooling** into the cloned repo's `.claude/` (also commits it, so
+   the layer is self-maintaining — exactly like the initial rollout):
+   ```bash
+   SKILL_DIR="$HOME/.claude/skills/context-layer"
+   [ -d "$SKILL_DIR/tooling" ] || SKILL_DIR="$(dirname "$(find "$HOME/.claude/skills" /app -name should-run.sh -path '*context-layer*' 2>/dev/null | head -1)")/.."
+   bash "$SKILL_DIR/tooling/install.sh" "$PWD"
+   ```
+   This drops `context-layer-{coordinator,capture,synthesis}.md` into
+   `.claude/agents/` and `context-layer.md` + `add-rule.md` into `.claude/skills/`,
+   scaffolds `.context-layer/manifest.json`, and gitignores `.context-layer/`.
 
-**Leaf node** (`<system>/AGENTS.md`) — fill every section:
-`# <System>` · one-line summary · `## Scope` (Owns / Does NOT own) ·
-`## Dependencies` with **both** `This System Depends On` and `Systems That Depend
-On This` tables · `## Integration Points` · `## Initialization & Lifecycle` ·
-`## Ownership` (owns/borrows/shares) · `## State` · `## Key Invariants` (2–3, or
-"none identified") · `## Patterns` · `## Anti-patterns`. Keep ≤ ~2000 tokens;
-prefer tables. Base every claim on real source — do not invent; mark uncertain
-facts "unverified".
+2. **Build the layer** by invoking the installed **coordinator** — i.e. run
+   "Build context layer" per `.claude/agents/context-layer-coordinator.md`. The
+   coordinator:
+   - discovers the repo's systems,
+   - spawns a **`context-layer-capture`** agent per system (via the Task tool) to
+     write each `<system>/AGENTS.md`,
+   - runs **`context-layer-synthesis`** to build parent/root nodes (System
+     Architecture, Data Flow, boundaries, downlinks) and deduplicate,
+   - creates the `CLAUDE.md → AGENTS.md` symlinks.
 
-**Parent / root nodes** (synthesis): `## System Architecture` (ASCII diagram) ·
-`## Data Flow` (≥1 flow) · `## System Boundaries` · `## Dependency Direction` ·
-`## Related Context` (downlinks to children). The **root** additionally gets an
-`## App Integration` section: how this repo talks to the rest of the CareSpace
-multirepo platform (REST/CMS/auth/queues) and any **PHI/HIPAA** boundary it
-touches (code-observed only). Deduplicate shared conventions up to the least
-common ancestor.
+   Follow those agent specs **exactly** — they are the source of truth for the
+   leaf/parent/root node format. **Preserve** any pre-existing user-authored
+   `AGENTS.md`/`CLAUDE.md` (never clobber hand-written root docs — add alongside).
+   Since this is a HIPAA healthcare platform, the root node's **App Integration**
+   section should note how the repo connects to the rest of the CareSpace platform
+   and any **PHI/auth boundary** the code shows (code-observed only; mark uncertain
+   facts "unverified").
 
-If the repo already ships context-layer agents under `.claude/agents/`, follow
-their leaf/parent/root formats exactly. (This is a HIPAA healthcare platform —
-note PHI/auth boundaries where the code shows them.)
+   For very large repos (e.g. carespace-ui, carespace-sdk) tell the coordinator to
+   sample rather than read every file, and cap at ~6–10 top systems.
 
 ## STEP 3 — Idempotent docs-only PR
 
