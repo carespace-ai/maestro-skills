@@ -303,13 +303,17 @@ except Exception:
     print(0)' 2>/dev/null || echo 0)"
 emit "NODES=${NODES:-0}"
 
+# Decide by SUPPORTED-SOURCE presence FIRST, then the index result. CodeGraph
+# indexes markdown/docs too (a lone README yields nodes>0), so a raw nodes>0
+# check would mislabel a docs-only / unsupported-language repo as `ready`.
+# Gating on HAS_SRC avoids that: no supported source → always fallback.
+if [ -z "$HAS_SRC" ]; then
+  emit "REASON=no CodeGraph-supported (ts/js/py/go) source detected" "CODEGRAPH=fallback"; exit 0
+fi
 if [ "${NODES:-0}" -gt 0 ]; then
   emit "REASON=indexed ${NODES} nodes" "CODEGRAPH=ready"; exit 0
 fi
-if [ -n "$HAS_SRC" ]; then
-  emit "REASON=supported-language source present but index produced 0 nodes" "CODEGRAPH=failed"; exit 0
-fi
-emit "REASON=no CodeGraph-supported source detected" "CODEGRAPH=fallback"; exit 0
+emit "REASON=supported-language source present but index produced 0 nodes" "CODEGRAPH=failed"; exit 0
 ```
 
 - [ ] **Step 4: Run the test to verify it passes**
