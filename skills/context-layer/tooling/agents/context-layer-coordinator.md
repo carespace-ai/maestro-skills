@@ -47,6 +47,18 @@ cat "$PROJECT_ROOT/.context-layer/manifest.json" 2>/dev/null || echo "NO_MANIFES
 
 ### Discover Systems (SPEND TOKENS HERE)
 
+**Seed the candidate list from CodeGraph first (if `.claude/cg.sh` is present):**
+
+```bash
+bash .claude/cg.sh map | python3 -c 'import sys,json; d=json.load(sys.stdin);
+[print(m["path"], m.get("functions",0), "fns", m.get("classes",0), "cls") for m in d["modules"]]'
+```
+
+`map.modules[]` is the AST-derived module inventory — use it as the ground-truth
+denominator for the completeness gate (below). `map.module_dependencies[]` already
+gives the cross-module import edges you would otherwise grep for. Only fall back to
+`find`/file-sampling when `cg.sh` is absent (unsupported language).
+
 This is the most important phase. You must **deeply understand** the codebase before deciding what to capture.
 
 **What is a "system" in software architecture?**
@@ -117,6 +129,11 @@ Skipping (not systems):
 
 🎯 All systems will use Opus (initial build)
 ```
+
+When CodeGraph is ready, print `covered=<n>/<total>` where `<total>` is
+`len(map.modules)` — every module in `cg map` must be either captured or explicitly
+excluded (pure UI/asset/type/generated/test/config). A graph module with real logic
+and no node is a bug.
 
 ### Create Manifest
 
@@ -337,12 +354,17 @@ For each AGENTS.md, check required sections based on node type:
 
 ### Step 3: Check for Stale References
 
-For each "Systems That Depend On This" or "Consumed By" entry:
+For each "Systems That Depend On This" / "Consumed By" entry, verify the edge:
+
 ```bash
-grep -r "[claimed_consumer]" [project_root] --include="*.ts" --include="*.swift" | head -1
+# CodeGraph ready: stale iff the symbol has no remaining references
+bash .claude/cg.sh refs [claimed_symbol] | \
+  python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["total_references"])'
+# Fallback (broad include set — covers languages CodeGraph does not index):
+grep -r "[claimed_consumer]" [project_root] --include="*.swift" --include="*.ts" --include="*.tsx" --include="*.js" --include="*.py" --include="*.go" --include="*.rs" --include="*.java" | head -1
 ```
 
-If no matches → mark as stale.
+If CodeGraph reports `0` references (or grep finds no matches) → mark as stale.
 
 ### Step 4: Save Review Report
 

@@ -60,6 +60,36 @@ git config user.email "context-layer@carespace.ai"
 ```
 For very large repos, do **not** read every file — sample strategically.
 
+## STEP 1.5 — CodeGraph bootstrap (decide graph-backed vs grep)
+
+From **inside the cloned repo**, build the CodeGraph index and read the run mode.
+The guard lives next to this SKILL.md:
+
+```bash
+BOOT="$HOME/.claude/skills/context-layer/scripts/codegraph-bootstrap.sh"
+[ -f "$BOOT" ] || BOOT="$(find "$HOME/.claude/skills" /app -name codegraph-bootstrap.sh -path '*context-layer*' 2>/dev/null | head -1)"
+# Capture output and parse the KEY=VALUE lines WITHOUT sourcing — REASON contains
+# spaces, so `source <(...)` would try to execute words as commands.
+BOOT_OUT="$(bash "$BOOT")"
+CODEGRAPH="$(printf '%s\n' "$BOOT_OUT" | sed -n 's/^CODEGRAPH=//p' | tail -1)"
+REASON="$(printf '%s\n'  "$BOOT_OUT" | sed -n 's/^REASON=//p'  | tail -1)"
+NODES="$(printf '%s\n'   "$BOOT_OUT" | sed -n 's/^NODES=//p'   | tail -1)"
+echo "CodeGraph: $CODEGRAPH ($REASON)"
+
+case "$CODEGRAPH" in
+  ready)    export CONTEXT_LAYER_CODEGRAPH=ready ;;   # agents query the graph via .claude/cg.sh
+  fallback) export CONTEXT_LAYER_CODEGRAPH=fallback ;; # unsupported language → grep paths
+  failed)   echo "ABORT: CodeGraph failed to index a supported-language repo ($REASON)"; exit 1 ;;
+esac
+```
+
+- `ready` → the capture/synthesis steps below MUST source structural facts from
+  `bash .claude/cg.sh <verb>` (installed by `tooling/install.sh`).
+- `fallback` → use the grep/find paths documented in the agent specs.
+- `failed` → **hard-fail the run** (a supported repo that won't index is a
+  regression to fix, not a silent quality drop). This is the ONLY place the
+  hard-fail policy is enforced; the portable specs always degrade gracefully.
+
 ## STEP 2 — Regenerate the Context Layer (use the bundled tooling)
 
 Use the **same** Context Layer tooling every repo received during the rollout — it
@@ -90,6 +120,10 @@ cloned repo and run it.
    - **Discover — enumerate EVERY module, then cover ALL that hold real logic.**
      First list every candidate unit: for a monorepo, each app/package; otherwise
      every top-level source dir (e.g. `src/*`, `lib/*`, `packages/*`, `cmd/*`).
+     When `CONTEXT_LAYER_CODEGRAPH=ready`, seed this list from
+     `bash .claude/cg.sh map` (`.modules[].path`) so the module inventory is
+     graph-derived, not guessed; the completeness self-check below compares
+     against that same list.
      A unit gets a leaf node **unless** it is purely UI/asset/type-only/DTO/
      generated/test/config with no behavior. **There is NO cap on node count** —
      coverage must be COMPLETE. A 30-module repo gets ~30 nodes, not 7. Do not
@@ -97,10 +131,14 @@ cloned repo and run it.
      business-logic modules are the ones that matter most and must each get a node.
      If a repo has many tiny sibling modules, you MAY group them under one shared
      parent node — but never silently drop a module with real logic.
-   - **Capture**: for each system, read its real source (+ grep who-imports-what)
-     and write `<system>/AGENTS.md` in the capture.md leaf format (Scope,
-     Dependencies BOTH directions, Integration Points, Lifecycle, Ownership,
-     State, Key Invariants, Patterns, Anti-patterns; ≤~2000 tokens; do not invent).
+   - **Capture**: for each system, get its symbols/signatures from
+     `bash .claude/cg.sh overview <dir>` and its dependency edges from
+     `bash .claude/cg.sh deps <file>` / `bash .claude/cg.sh refs <symbol>`
+     when `CONTEXT_LAYER_CODEGRAPH=ready`; otherwise fall back to reading source
+     + `grep` who-imports-what. Write `<system>/AGENTS.md` in the capture.md leaf
+     format (Scope, Dependencies BOTH directions, Integration Points, Lifecycle,
+     Ownership, State, Key Invariants, Patterns, Anti-patterns; ≤~2000 tokens; do
+     not invent).
    - **Synthesize**: write the parent/root `AGENTS.md` nodes per synthesis.md
      (System Architecture ASCII, Data Flow, boundaries, dependency direction,
      downlinks) and deduplicate shared conventions to the least common ancestor.
