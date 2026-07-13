@@ -80,9 +80,13 @@ For each AGENTS.md, extract:
 exact and avoids re-deriving structure from captured prose:
 
 ```bash
-bash .claude/cg.sh map | python3 -c 'import sys,json; d=json.load(sys.stdin);
-edges=d["module_dependencies"];
-[print(f"{e[\"from\"]} -> {e[\"to\"]} ({e[\"imports\"]} imports)") for e in edges]'
+# NOTE: the python runs inside python3 -c '...' (bash single quotes), so use
+# double-quoted dict keys and a plain print() with commas — NOT an f-string with
+# escaped quotes (backslash-escaped quotes inside an f-string are a SyntaxError,
+# and single quotes would close the surrounding bash string).
+bash .claude/cg.sh map | python3 -c 'import sys,json
+for e in json.load(sys.stdin)["module_dependencies"]:
+    print(e["from"], "->", e["to"], "(", e["imports"], "imports)")'
 ```
 
 `module_dependencies[]` gives the directed edges between modules; use them for the
