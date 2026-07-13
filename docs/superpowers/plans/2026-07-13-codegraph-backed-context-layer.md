@@ -656,8 +656,8 @@ For each "Systems That Depend On This" / "Consumed By" entry, verify the edge:
 # CodeGraph ready: stale iff the symbol has no remaining references
 bash .claude/cg.sh refs [claimed_symbol] | \
   python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["total_references"])'
-# Fallback:
-grep -r "[claimed_consumer]" [project_root] --include="*.ts" --include="*.py" | head -1
+# Fallback (broad include set — covers languages CodeGraph does not index):
+grep -r "[claimed_consumer]" [project_root] --include="*.swift" --include="*.ts" --include="*.tsx" --include="*.js" --include="*.py" --include="*.go" --include="*.rs" --include="*.java" | head -1
 ```
 
 If CodeGraph reports `0` references (or grep finds no matches) → mark as stale.
