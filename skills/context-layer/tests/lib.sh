@@ -16,5 +16,19 @@ EOF
   git -C "$d" init -q
 }
 
+make_big_fixture() {
+  # $1 = target dir. Many JS files under a deep path so `find`'s output exceeds the
+  # ~64KB pipe buffer — this is what triggers the SIGPIPE/pipefail HAS_SRC bug that a
+  # small fixture cannot. Used to regression-test codegraph-bootstrap.sh.
+  local d="$1"; rm -rf "$d"
+  local deep="$d/backend/services/orchestration/runners/very/deeply/nested/module/tree"
+  mkdir -p "$deep"
+  local i
+  for i in $(seq 1 600); do
+    printf 'export const a%s = %s;\n' "$i" "$i" > "$deep/some_reasonably_long_source_filename_$i.js"
+  done
+  git -C "$d" init -q
+}
+
 fail() { echo "FAIL: $*" >&2; exit 1; }
 pass() { echo "PASS: $*"; }

@@ -286,12 +286,15 @@ if ! command -v "$CG_BIN" >/dev/null 2>&1; then
 fi
 
 # Is there any source in a CodeGraph-supported language? (policy: TS/JS/Python/Go)
+# Use `-print -quit` (not `| head -1`): under `set -o pipefail`, `find | head -1`
+# mislabels large repos — head closes the pipe, find dies with SIGPIPE (141),
+# pipefail propagates it, and HAS_SRC wrongly stays empty.
 HAS_SRC=""
-if find . -type f \
+if [ -n "$(find . -type f \
      \( -name '*.ts' -o -name '*.tsx' -o -name '*.js' -o -name '*.jsx' \
         -o -name '*.py' -o -name '*.go' \) \
-     ! -path '*/node_modules/*' ! -path '*/.git/*' ! -path '*/dist/*' 2>/dev/null \
-   | head -1 | grep -q . ; then HAS_SRC=1; fi
+     ! -path '*/node_modules/*' ! -path '*/.git/*' ! -path '*/dist/*' \
+     -print -quit 2>/dev/null)" ]; then HAS_SRC=1; fi
 
 # Fresh clone → full build. Never fatal here; we judge success by node count.
 "$CG_BIN" rebuild-index --confirm >/dev/null 2>&1 || true
