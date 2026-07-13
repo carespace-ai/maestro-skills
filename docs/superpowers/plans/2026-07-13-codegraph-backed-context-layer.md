@@ -526,10 +526,12 @@ bash .claude/cg.sh overview [target]     # [{name,signature,file,type,caller_cou
 Read the actual source only for the **semantic** facts CodeGraph can't give you
 (invariants, comments, lifecycle) — prefer entry/service/repository files.
 
-**Fallback (no cg.sh):** list and read source directly:
+**Fallback (no cg.sh):** list and read source directly. The fallback exists FOR
+languages CodeGraph doesn't index, so keep this extension set a superset of the
+graph path — never drop the original languages (swift/rust/java):
 
 ```bash
-find [target] -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.py" -o -name "*.go" -o -name "*.js" \) ! -path "*/test*"
+find [target] -type f \( -name "*.swift" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.py" -o -name "*.go" -o -name "*.rs" -o -name "*.java" \) ! -path "*/test*"
 ```
 ````
 
@@ -562,7 +564,8 @@ Depend On This**. CodeGraph catches re-exports and aliased imports that grep mis
 
 ```bash
 grep -r "^import\|^from\|^require" [target] | grep -v "node_modules\|test"   # depends on
-grep -r "[system_name]" [project_root] --include="*.ts" --include="*.py" | grep -v "[target]"   # depended on by
+# depended on by — keep the include set broad (fallback covers unsupported langs):
+grep -r "[system_name]" [project_root] --include="*.swift" --include="*.ts" --include="*.tsx" --include="*.js" --include="*.py" --include="*.go" --include="*.rs" --include="*.java" | grep -v "[target]"
 ```
 ````
 
@@ -576,8 +579,8 @@ In `## Phase 2.5: Verify Existing Documentation (Updates Only)`, replace the gre
    # CodeGraph ready: the consumer is stale iff no reference remains
    bash .claude/cg.sh refs [this_system_symbol] | \
      python3 -c 'import sys,json; d=json.load(sys.stdin); print("\n".join(r["file_path"] for r in d["references"]))'
-   # Fallback:
-   grep -r "[this_system]" [claimed_consumer_path] --include="*.ts" --include="*.py"
+   # Fallback (broad include set — covers languages CodeGraph does not index):
+   grep -r "[this_system]" [claimed_consumer_path] --include="*.swift" --include="*.ts" --include="*.tsx" --include="*.js" --include="*.py" --include="*.go" --include="*.rs" --include="*.java"
    ```
 ````
 
