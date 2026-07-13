@@ -76,6 +76,20 @@ For each AGENTS.md, extract:
 
 ### Aggregate Dependencies
 
+**Build the map from CodeGraph edges when `.claude/cg.sh` is present** — this is
+exact and avoids re-deriving structure from captured prose:
+
+```bash
+bash .claude/cg.sh map | python3 -c 'import sys,json; d=json.load(sys.stdin);
+edges=d["module_dependencies"];
+[print(f"{e[\"from\"]} -> {e[\"to\"]} ({e[\"imports\"]} imports)") for e in edges]'
+```
+
+`module_dependencies[]` gives the directed edges between modules; use them for the
+System Map, **Dependency Direction**, and layer grouping (top = nothing depends on
+it; bottom = many depend on it). `modules[].key_symbols` names each module's public
+surface. Only aggregate from captured AGENTS.md prose when CodeGraph is unavailable.
+
 From all captured nodes, build a complete picture:
 
 ```
@@ -271,6 +285,10 @@ Auth    Queue
 ```
 
 **Rule**: Dependencies point DOWN. Database never imports Services. Services never import API.
+
+> When CodeGraph is ready, derive the arrows directly from `cg map`
+> `module_dependencies[]` (from → to). Do not hand-infer directions that
+> contradict the graph; the graph is ground truth for structure.
 
 ## Integration Contracts
 
