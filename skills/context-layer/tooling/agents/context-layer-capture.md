@@ -38,15 +38,23 @@ Given a directory path, create an AGENTS.md that captures what **code alone cann
 
 ## Phase 1: Understand the System
 
-### List Files
+### List Files & Symbols
+
+**If `.claude/cg.sh` is present (CodeGraph ready):** get the module's symbols and
+signatures without reading every file:
 
 ```bash
-find [target] -type f \( -name "*.swift" -o -name "*.ts" -o -name "*.py" -o -name "*.go" -o -name "*.rs" -o -name "*.java" \) ! -path "*/test*" ! -path "*Test*"
+bash .claude/cg.sh overview [target]     # [{name,signature,file,type,caller_count,...}]
 ```
 
-### Read All Source Files
+Read the actual source only for the **semantic** facts CodeGraph can't give you
+(invariants, comments, lifecycle) — prefer entry/service/repository files.
 
-Read every source file in the system. You need complete understanding to document it properly.
+**Fallback (no cg.sh):** list and read source directly:
+
+```bash
+find [target] -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.py" -o -name "*.go" -o -name "*.js" \) ! -path "*/test*"
+```
 
 ### What to Extract
 
@@ -61,26 +69,27 @@ Read every source file in the system. You need complete understanding to documen
 
 **REQUIRED**: Both dependency tables MUST be populated. If truly empty, write "None identified."
 
-### What This System DEPENDS ON
-
-Grep for imports from other systems:
+**If CodeGraph is ready**, use exact AST edges instead of grep:
 
 ```bash
-# Find imports
-grep -r "^import\|^from\|^require" [target] | grep -v "node_modules\|test"
+# What this system DEPENDS ON (outgoing) and what DEPENDS ON it (incoming),
+# per representative file in the module:
+bash .claude/cg.sh deps [target]/<entry-file>     # {depends_on:[{file,symbols}], depended_by:[{file,symbols}]}
+
+# Reverse edges for a specific exported symbol (who calls / imports it):
+bash .claude/cg.sh refs <ExportedSymbol>          # references[] with relation calls|imports|exports
+bash .claude/cg.sh callgraph <ExportedSymbol>     # callers + callees
 ```
 
-Categorize:
-- **Internal dependencies**: Other systems in this codebase
-- **External dependencies**: Libraries, frameworks
+Map the JSON to the two tables: `depends_on` / `callees` → **This System Depends On**;
+`depended_by` / `refs.references[relation in (calls,imports)]` → **Systems That
+Depend On This**. CodeGraph catches re-exports and aliased imports that grep misses.
 
-### What DEPENDS ON This System
-
-Search the **entire codebase** (not just siblings) for usages:
+**Fallback (no cg.sh):** grep for imports and usages:
 
 ```bash
-# Find who imports this system - search WHOLE repo
-grep -r "[system_name]" [project_root] --include="*.swift" --include="*.ts" --include="*.tsx" --include="*.py" | grep -v "[target]"
+grep -r "^import\|^from\|^require" [target] | grep -v "node_modules\|test"   # depends on
+grep -r "[system_name]" [project_root] --include="*.ts" --include="*.py" | grep -v "[target]"   # depended on by
 ```
 
 ### Cross-App Dependencies (Monorepos)
@@ -122,9 +131,13 @@ DEPENDED ON BY:
 If updating an existing AGENTS.md:
 
 1. Read the current "Systems That Depend On This" section
-2. For each claimed consumer, verify it still imports this system:
+2. For each claimed consumer, verify the edge still exists:
    ```bash
-   grep -r "[this_system]" [claimed_consumer_path] --include="*.ts" --include="*.swift"
+   # CodeGraph ready: the consumer is stale iff no reference remains
+   bash .claude/cg.sh refs [this_system_symbol] | \
+     python3 -c 'import sys,json; d=json.load(sys.stdin); print("\n".join(r["file_path"] for r in d["references"]))'
+   # Fallback:
+   grep -r "[this_system]" [claimed_consumer_path] --include="*.ts" --include="*.py"
    ```
 3. **If no matches**: REMOVE the stale consumer
 4. **If matches but different usage**: UPDATE the description
