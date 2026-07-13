@@ -108,6 +108,7 @@ EOF
 import { makeToken, verify } from "../auth/token";
 export function login(id: string) { const t = makeToken(id); return verify(t); }
 EOF
+  git -C "$d" init -q
 }
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
@@ -376,6 +377,8 @@ with:
 
 ```bash
 touch "$TARGET/.gitignore"
+# ensure the file ends in a newline so appended entries land on their own line
+[ -s "$TARGET/.gitignore" ] && [ -n "$(tail -c1 "$TARGET/.gitignore")" ] && printf '\n' >> "$TARGET/.gitignore"
 grep -q '^\.context-layer' "$TARGET/.gitignore" || echo '.context-layer/' >> "$TARGET/.gitignore"
 grep -q '^\.code-graph'    "$TARGET/.gitignore" || echo '.code-graph/'    >> "$TARGET/.gitignore"
 ```
@@ -531,7 +534,7 @@ languages CodeGraph doesn't index, so keep this extension set a superset of the
 graph path — never drop the original languages (swift/rust/java):
 
 ```bash
-find [target] -type f \( -name "*.swift" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.py" -o -name "*.go" -o -name "*.rs" -o -name "*.java" \) ! -path "*/test*"
+find [target] -type f \( -name "*.swift" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.py" -o -name "*.go" -o -name "*.rs" -o -name "*.java" \) ! -path "*/test*" ! -path "*Test*"
 ```
 ````
 

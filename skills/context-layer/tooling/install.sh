@@ -30,6 +30,8 @@ if [ ! -f "$TARGET/.context-layer/manifest.json" ]; then
   printf '%s\n' '{' '  "version": 1,' '  "systems": []' '}' > "$TARGET/.context-layer/manifest.json"
 fi
 touch "$TARGET/.gitignore"
+# ensure the file ends in a newline so appended entries land on their own line
+[ -s "$TARGET/.gitignore" ] && [ -n "$(tail -c1 "$TARGET/.gitignore")" ] && printf '\n' >> "$TARGET/.gitignore"
 grep -q '^\.context-layer' "$TARGET/.gitignore" || echo '.context-layer/' >> "$TARGET/.gitignore"
 grep -q '^\.code-graph'    "$TARGET/.gitignore" || echo '.code-graph/'    >> "$TARGET/.gitignore"
 

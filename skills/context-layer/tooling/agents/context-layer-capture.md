@@ -55,7 +55,7 @@ languages CodeGraph doesn't index, so keep this extension set a superset of the
 graph path — never drop the original languages (swift/rust/java):
 
 ```bash
-find [target] -type f \( -name "*.swift" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.py" -o -name "*.go" -o -name "*.rs" -o -name "*.java" \) ! -path "*/test*"
+find [target] -type f \( -name "*.swift" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.py" -o -name "*.go" -o -name "*.rs" -o -name "*.java" \) ! -path "*/test*" ! -path "*Test*"
 ```
 
 ### What to Extract

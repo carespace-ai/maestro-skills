@@ -13,6 +13,7 @@ EOF
 import { makeToken, verify } from "../auth/token";
 export function login(id: string) { const t = makeToken(id); return verify(t); }
 EOF
+  git -C "$d" init -q
 }
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
