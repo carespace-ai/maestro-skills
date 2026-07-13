@@ -21,14 +21,16 @@ cp "$HERE/skills/context-layer.md" \
    "$HERE/skills/add-rule.md" \
    "$TARGET/.claude/skills/"
 
+# CodeGraph verb wrapper — agents call `bash .claude/cg.sh <verb>` for structural facts.
+cp "$HERE/cg.sh" "$TARGET/.claude/cg.sh"
+chmod +x "$TARGET/.claude/cg.sh"
+
 # manifest scaffold (agents create/refresh it on build); keep it out of git
 if [ ! -f "$TARGET/.context-layer/manifest.json" ]; then
   printf '%s\n' '{' '  "version": 1,' '  "systems": []' '}' > "$TARGET/.context-layer/manifest.json"
 fi
-if [ -f "$TARGET/.gitignore" ]; then
-  grep -q '^\.context-layer' "$TARGET/.gitignore" || echo '.context-layer/' >> "$TARGET/.gitignore"
-else
-  echo '.context-layer/' > "$TARGET/.gitignore"
-fi
+touch "$TARGET/.gitignore"
+grep -q '^\.context-layer' "$TARGET/.gitignore" || echo '.context-layer/' >> "$TARGET/.gitignore"
+grep -q '^\.code-graph'    "$TARGET/.gitignore" || echo '.code-graph/'    >> "$TARGET/.gitignore"
 
-echo "installed context-layer tooling into $TARGET/.claude/ (agents: coordinator, capture, synthesis; skills: context-layer, add-rule)"
+echo "installed context-layer tooling into $TARGET/.claude/ (agents: coordinator, capture, synthesis; skills: context-layer, add-rule; cg.sh)"
