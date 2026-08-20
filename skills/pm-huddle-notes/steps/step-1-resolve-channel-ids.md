@@ -72,7 +72,9 @@ echo "Users mapped: $(wc -l < /tmp/huddle-users.tsv)"
 awk -F'\t' 'NF>=2 {n=$2; gsub(/[|\\&]/, "", n); print "s|" $1 "|" n "|g"}' \
   /tmp/huddle-users.tsv > /tmp/huddle-users.sed
 
-# sed script for substituting channel IDs with channel names (e.g. canvas titles)
-awk -F'\t' 'NF>=2 {n=$1; gsub(/[|\\&]/, "", n); print "s|" $2 "|" n "|g"}' \
+# sed script for substituting channel IDs with channel names — ONLY in display
+# text (#C...), never bare IDs: Slack URLs embed raw channel IDs
+# (archives/C.../..., cid=C...) and must keep them to stay clickable
+awk -F'\t' 'NF>=2 {n=$1; gsub(/[|\\&]/, "", n); print "s|#" $2 "|#" n "|g"}' \
   /tmp/huddle-channels.tsv > /tmp/huddle-channels.sed
 ```
