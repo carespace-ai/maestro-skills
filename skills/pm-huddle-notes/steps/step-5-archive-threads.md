@@ -1,13 +1,23 @@
-# Step 5: Archive Huddle Threads → <huddle-folder>/thread.md + /tmp/huddle-log.txt
+# Step 5: Archive Huddle Conversations → <huddle-folder>/thread.md + /tmp/huddle-log.txt
 
-For each huddle thread collected in Step 2: fetch all thread replies via `conversations.replies`,
-render a markdown transcript of the thread (bulleted, timestamped, usernames resolved),
-and write it as `thread.md` inside the same per-huddle folder Step 4 uses — the folder
-name derives from the thread's start ts (UTC), so notes and thread pair automatically.
+`thread.md` is the huddle's CONVERSATION file, with two sections:
+
+1. **Transcript** — the full spoken transcript. Slack only serves
+   `huddle_transcript` files to user tokens (`SLACK_USER_TOKEN`); with a bot
+   token this section carries the Slack link and a "pending" marker instead.
+2. **Thread messages** — everything typed in the huddle thread.
+
+Upgrade-in-place: if an existing `thread.md` has a pending transcript and the
+transcript is now downloadable, the file is rewritten (sha update). Otherwise
+existing files are skipped (idempotent).
+
+Transcript source: `/tmp/huddle-transcripts.tsv` from Step 4; falls back to the
+`transcript_file_id` recorded in the folder's `notes.md` frontmatter.
 
 ```bash
 source ~/.claude/skills/_pm-shared/context.sh
 TWRITTEN=0; TSKIPPED=0; TERRORS=0; MAX=$HUDDLE_MAX_PER_RUN
+PENDING_MARK='transcript pending'
 
 # user_id → name lookup as a jq object
 UMAP=$(jq -Rn '[inputs | split("\t") | select(length >= 2) | {(.[0]): .[1]}] | add // {}' \
@@ -24,11 +34,50 @@ while IFS=$'\t' read -r channel ch_id thread_ts started participants; do
   DIR="${FDATE}-${FTIME}-${channel}"
   DEST="$HUDDLE_VAULT_PATH/$DIR/thread.md"
 
-  # Idempotency: skip if thread.md already exists in this huddle's folder
-  if gh api "repos/$HUDDLE_VAULT_REPO/contents/$DEST" --jq '.sha' >/dev/null 2>&1; then
-    TSKIPPED=$((TSKIPPED+1))
-    echo "SKIP (exists): $DIR/thread.md" >> /tmp/huddle-log.txt
-    continue
+  # ── Transcript lookup: Step 4 map → notes.md frontmatter fallback ──
+  TR_ID=""; TR_PERMALINK=""; TR_DL=""
+  TRLINE=$(awk -F'\t' -v d="$DIR" '$1==d{print; exit}' /tmp/huddle-transcripts.tsv 2>/dev/null)
+  if [ -n "$TRLINE" ]; then
+    TR_ID=$(echo "$TRLINE" | cut -f2)
+    TR_PERMALINK=$(echo "$TRLINE" | cut -f3)
+    TR_DL=$(echo "$TRLINE" | cut -f4)
+  else
+    TR_ID=$(gh api "repos/$HUDDLE_VAULT_REPO/contents/$HUDDLE_VAULT_PATH/$DIR/notes.md" \
+      --jq '.content' 2>/dev/null | base64 -d 2>/dev/null \
+      | grep -m1 '^transcript_file_id:' | sed 's/.*"\(.*\)"/\1/')
+    if [ -n "$TR_ID" ]; then
+      TINFO=$(curl -s "https://slack.com/api/files.info?file=${TR_ID}" \
+        -H "Authorization: Bearer $SLACK_BOT_TOKEN")
+      TR_PERMALINK=$(echo "$TINFO" | jq -r '.file.permalink // ""')
+      TR_DL=$(echo "$TINFO" | jq -r '.file.url_private_download // .file.url_private // ""')
+    fi
+  fi
+
+  # ── Try to download the full transcript (only user tokens succeed) ──
+  TCONTENT=""
+  if [ -n "$TR_DL" ]; then
+    TRAW=$(curl -sL "$TR_DL" -H "Authorization: Bearer ${SLACK_USER_TOKEN:-$SLACK_BOT_TOKEN}")
+    if [ -n "$TRAW" ] && ! printf '%s' "$TRAW" | head -c 300 | grep -qi '<!DOCTYPE html\|<html'; then
+      if printf '%s' "$TRAW" | jq . >/dev/null 2>&1; then
+        TCONTENT=$(printf '%s' "$TRAW" | jq -r '.. | .text? // empty' 2>/dev/null | grep -v '^$')
+      else
+        TCONTENT=$(printf '%s' "$TRAW" | sed 's/<[^>]*>//g; /^[[:space:]]*$/d')
+      fi
+      [ -s /tmp/huddle-users.sed ] && TCONTENT=$(printf '%s' "$TCONTENT" | sed -f /tmp/huddle-users.sed)
+    fi
+  fi
+
+  # ── Idempotency / upgrade decision ──
+  EXISTING=$(gh api "repos/$HUDDLE_VAULT_REPO/contents/$DEST" --jq '.content' 2>/dev/null \
+    | base64 -d 2>/dev/null || echo "")
+  if [ -n "$EXISTING" ]; then
+    if echo "$EXISTING" | grep -q "$PENDING_MARK" && [ -n "$TCONTENT" ]; then
+      echo "UPGRADE: $DIR/thread.md (transcript now available)" >> /tmp/huddle-log.txt
+    else
+      TSKIPPED=$((TSKIPPED+1))
+      echo "SKIP (exists): $DIR/thread.md" >> /tmp/huddle-log.txt
+      continue
+    fi
   fi
 
   REPLIES=$(curl -s "https://slack.com/api/conversations.replies?channel=${ch_id}&ts=${thread_ts}&limit=200" \
@@ -41,7 +90,7 @@ while IFS=$'\t' read -r channel ch_id thread_ts started participants; do
 
   # Bulleted markdown lines: "- **[HH:MM] name:** text" — skip empty messages,
   # resolve inline <@U...> mentions, list attached files
-  CONTENT=$(echo "$REPLIES" | jq -r --argjson u "$UMAP" '
+  THREADMSGS=$(echo "$REPLIES" | jq -r --argjson u "$UMAP" '
       .messages[]?
       | select((.text // "") != "" or ((.files // []) | length) > 0)
       | "- **[" + (.ts | tonumber | floor | strftime("%H:%M")) + "] "
@@ -52,7 +101,7 @@ while IFS=$'\t' read -r channel ch_id thread_ts started participants; do
            else "" end)
     ')
 
-  CLEN=${#CONTENT}
+  CLEN=$(( ${#THREADMSGS} + ${#TCONTENT} ))
   if [ "$CLEN" -lt "$HUDDLE_MIN_CONTENT_CHARS" ]; then
     TSKIPPED=$((TSKIPPED+1))
     echo "SKIP (thin ${CLEN}c): $DIR/thread.md" >> /tmp/huddle-log.txt
@@ -68,22 +117,45 @@ while IFS=$'\t' read -r channel ch_id thread_ts started participants; do
   {
     printf -- '---\n'
     printf 'date: %s\n' "$FDATE"
-    printf 'source: slack-huddle-thread\n'
+    printf 'source: slack-huddle-conversation\n'
     printf 'channel: "%s"\n' "$channel"
     printf 'huddle_thread_ts: "%s"\n' "$thread_ts"
     printf 'participants: "%s"\n' "$PNAMES"
+    [ -n "$TR_ID" ] && printf 'transcript_file_id: "%s"\n' "$TR_ID"
+    [ -n "$TR_PERMALINK" ] && printf 'transcript_url: "%s"\n' "$TR_PERMALINK"
     printf 'archived_by: pm-huddle-notes\n'
     printf -- '---\n\n'
-    printf '# :speech_balloon: Huddle thread — #%s — %s %s UTC\n\n' "$channel" "$FDATE" "$FTIME"
+    printf '# :speech_balloon: Huddle conversation — #%s — %s %s UTC\n\n' "$channel" "$FDATE" "$FTIME"
     printf '**Participants:** %s\n\n' "$PNAMES"
-    printf '%s\n' "$CONTENT"
+    printf '## :studio_microphone: Transcript\n\n'
+    if [ -n "$TCONTENT" ]; then
+      printf '%s\n\n' "$TCONTENT"
+    elif [ -n "$TR_PERMALINK" ]; then
+      printf '_Full transcript pending — Slack only serves huddle transcripts to user tokens; set `SLACK_USER_TOKEN` on the runner to archive it here automatically. [Open transcript in Slack](%s)_\n\n' "$TR_PERMALINK"
+    else
+      printf '_No transcript file found for this huddle._\n\n'
+    fi
+    printf '## :thread: Thread messages\n\n'
+    if [ -n "$THREADMSGS" ]; then
+      printf '%s\n' "$THREADMSGS"
+    else
+      printf '_No messages were posted in the huddle thread._\n'
+    fi
   } > /tmp/huddle-upload.md
 
   B64=$(base64 -w0 /tmp/huddle-upload.md)
-  PAYLOAD=$(jq -n \
-    --arg msg "huddle: $FDATE #$channel — thread archived by pm-huddle-notes" \
-    --arg content "$B64" \
-    '{message: $msg, content: $content}')
+  SHA=$(gh api "repos/$HUDDLE_VAULT_REPO/contents/$DEST" --jq '.sha' 2>/dev/null || echo "")
+  if [ -n "$SHA" ]; then
+    PAYLOAD=$(jq -n \
+      --arg msg "huddle: $FDATE #$channel — conversation upgraded with full transcript" \
+      --arg content "$B64" --arg sha "$SHA" \
+      '{message: $msg, content: $content, sha: $sha}')
+  else
+    PAYLOAD=$(jq -n \
+      --arg msg "huddle: $FDATE #$channel — conversation archived by pm-huddle-notes" \
+      --arg content "$B64" \
+      '{message: $msg, content: $content}')
+  fi
   RESULT=$(gh api "repos/$HUDDLE_VAULT_REPO/contents/$DEST" \
     -X PUT --input - <<< "$PAYLOAD" \
     --jq '.content.name // "ERROR"' 2>&1)
@@ -93,13 +165,13 @@ while IFS=$'\t' read -r channel ch_id thread_ts started participants; do
     echo "ERROR: $DIR/thread.md → $RESULT" >> /tmp/huddle-log.txt
   else
     TWRITTEN=$((TWRITTEN+1))
-    echo "WRITE: $DIR/thread.md (${CLEN}c)" >> /tmp/huddle-log.txt
+    echo "WRITE: $DIR/thread.md (${CLEN}c, transcript: $([ -n "$TCONTENT" ] && echo embedded || echo pending))" >> /tmp/huddle-log.txt
   fi
 
   sleep 0.3
 done < /tmp/huddle-threads.tsv
 
-echo "=== Thread Summary ===" >> /tmp/huddle-log.txt
-echo "Threads written: $TWRITTEN | Skipped: $TSKIPPED | Errors: $TERRORS" >> /tmp/huddle-log.txt
+echo "=== Conversation Summary ===" >> /tmp/huddle-log.txt
+echo "Written: $TWRITTEN | Skipped: $TSKIPPED | Errors: $TERRORS" >> /tmp/huddle-log.txt
 tail -20 /tmp/huddle-log.txt
 ```
