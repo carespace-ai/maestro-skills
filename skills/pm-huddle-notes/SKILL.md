@@ -1,6 +1,6 @@
 ---
 name: pm-huddle-notes
-description: Scan #pm-standup and #carespace-team for huddle note canvases AND huddle thread transcripts (7-day lookback), extract plaintext content, archive to GitHub vault. Idempotent — skips already-archived files.
+description: Scan #pm-standup and #carespace-team for huddles (7-day lookback); archive AI notes canvases + thread transcripts as markdown into one vault folder per huddle. Idempotent — skips already-archived huddles.
 ---
 
 # PM Huddle Notes
@@ -50,7 +50,7 @@ scope issue. Step 4 therefore always records `transcript_file_id` +
 `transcript_url` in the archived note's frontmatter, and attempts the full
 download with `$SLACK_USER_TOKEN` (a user `xoxp-` token) when set, falling
 back to the bot token. The archivable records today are: the AI-notes canvas
-(timestamped, per-speaker — Steps 2/4) and the huddle thread (Steps 5/6).
+(timestamped, per-speaker — Steps 2/4) and the huddle thread (Steps 2/5).
 
 ---
 
@@ -81,7 +81,7 @@ Do not read ahead. Only load the next step file after the current step completes
 ## VAULT LAYOUT
 
 One folder per huddle, named `YYYY-MM-DD-HHMM-<channel>` (UTC huddle start,
-derived from the huddle's `thread_ts` so Steps 4 and 6 pair automatically):
+derived from the huddle's `thread_ts` so Steps 4 and 5 pair automatically):
 
 ```
 huddles/
