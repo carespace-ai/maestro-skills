@@ -38,9 +38,16 @@ while IFS=$'\t' read -r channel file_id created_ts name url_private; do
   # Download raw canvas content
   RAW=$(curl -sL "$url_private" -H "Authorization: Bearer $SLACK_BOT_TOKEN")
 
-  # Strip HTML tags to plaintext if content looks like HTML
-  if echo "$RAW" | grep -q '<html\|<!DOCTYPE'; then
-    CONTENT=$(echo "$RAW" | sed 's/<[^>]*>//g; /^[[:space:]]*$/d' | sed 's/&amp;/\&/g; s/&lt;/</g; s/&gt;/>/g; s/&nbsp;/ /g')
+  # Strip HTML tags to plaintext if content looks like HTML.
+  # NOTE: canvas exports start with <div class="quip-canvas-content"> — no
+  # <html>/<!DOCTYPE — so detect ANY opening tag, not just document headers
+  # (the old check silently archived raw HTML). Block-level closers become
+  # newlines first so the plaintext keeps its structure.
+  if echo "$RAW" | grep -q '<[a-zA-Z][^>]*>'; then
+    CONTENT=$(printf '%s' "$RAW" \
+      | sed 's#</p>#\n#g; s#</li>#\n#g; s#</h[1-6]>#\n\n#g; s#<br/>#\n#g; s#<hr[^>]*>#\n---\n#g' \
+      | sed 's/<[^>]*>//g; /^[[:space:]]*$/d' \
+      | sed 's/&amp;/\&/g; s/&lt;/</g; s/&gt;/>/g; s/&nbsp;/ /g; s/&#39;/'"'"'/g')
   elif echo "$RAW" | jq . >/dev/null 2>&1; then
     # JSON canvas format — extract text blocks
     CONTENT=$(echo "$RAW" | jq -r '
