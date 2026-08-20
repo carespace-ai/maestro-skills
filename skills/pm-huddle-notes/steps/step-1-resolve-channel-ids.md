@@ -2,6 +2,7 @@
 
 `files.list` and `conversations.history` require channel IDs, not names.
 Paginate `conversations.list` to handle workspaces with >200 channels.
+Note: private channels only appear if the bot is a **member** (plus `groups:read`).
 
 ```bash
 source ~/.claude/skills/_pm-shared/context.sh
@@ -13,6 +14,10 @@ while true; do
   [ -n "$CURSOR" ] && URL="${URL}&cursor=${CURSOR}"
 
   PAGE=$(curl -s "$URL" -H "Authorization: Bearer $SLACK_BOT_TOKEN")
+  if [ "$(echo "$PAGE" | jq -r '.ok')" != "true" ]; then
+    echo "FATAL: conversations.list failed → $(echo "$PAGE" | jq -r '.error')"
+    exit 1
+  fi
   echo "$PAGE" | jq -r '.channels[] | [.name, .id] | @tsv' >> /tmp/huddle-channels.tsv
 
   CURSOR=$(echo "$PAGE" | jq -r '.response_metadata.next_cursor // empty')
@@ -20,13 +25,23 @@ while true; do
   sleep 0.3
 done
 
-# Verify all source channels resolved
+# Verify all source channels resolved — unresolved is a hard error, not a silent skip
+UNRESOLVED=0
 for ch in $HUDDLE_SOURCE_CHANNELS; do
   ID=$(awk -F'\t' -v n="$ch" '$1==n{print $2}' /tmp/huddle-channels.tsv)
   if [ -z "$ID" ]; then
-    echo "WARNING: channel '$ch' not found in workspace — will skip"
+    UNRESOLVED=$((UNRESOLVED+1))
+    echo "BLOCKER: channel '$ch' not visible to the bot."
+    echo "  If #$ch is private: the bot must be a member — run /invite @<bot> in #$ch"
+    echo "  (groups:read alone is not enough; private channels list only for members)."
+    echo "  If #$ch is public: check the exact channel name."
   else
     echo "Resolved: #$ch → $ID"
   fi
 done
+
+if [ "$UNRESOLVED" -eq "$(echo $HUDDLE_SOURCE_CHANNELS | wc -w)" ]; then
+  echo "FATAL: no source channel could be resolved — nothing to collect. Aborting."
+  exit 1
+fi
 ```
