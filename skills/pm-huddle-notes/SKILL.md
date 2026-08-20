@@ -73,11 +73,23 @@ Do not read ahead. Only load the next step file after the current step completes
 |---|------|-------------|
 | 0 | [steps/step-0-load-context.md](steps/step-0-load-context.md) | Source shared context + token/scope preflight (aborts on missing scopes) |
 | 1 | [steps/step-1-resolve-channel-ids.md](steps/step-1-resolve-channel-ids.md) | Resolve channel names to IDs via paginated conversations.list |
-| 2 | [steps/step-2-collect-canvas-files.md](steps/step-2-collect-canvas-files.md) | Scan channels for canvas/huddle files within lookback window |
-| 3 | [steps/step-3-load-vault-index.md](steps/step-3-load-vault-index.md) | Load existing vault filenames for idempotency check |
-| 4 | [steps/step-4-download-archive.md](steps/step-4-download-archive.md) | Download canvas content, strip HTML, write to GitHub vault |
-| 5 | [steps/step-5-collect-huddle-threads.md](steps/step-5-collect-huddle-threads.md) | Find huddle_thread anchors + build user-ID→name map |
-| 6 | [steps/step-6-archive-transcripts.md](steps/step-6-archive-transcripts.md) | Fetch thread replies, render timestamped transcript, write to vault |
+| 2 | [steps/step-2-collect-canvas-files.md](steps/step-2-collect-canvas-files.md) | Scan channels for canvas files + huddle_thread anchors within lookback window |
+| 3 | [steps/step-3-load-vault-index.md](steps/step-3-load-vault-index.md) | List existing vault huddle folders (informational) |
+| 4 | [steps/step-4-download-archive.md](steps/step-4-download-archive.md) | Render canvas → markdown, write `<huddle-folder>/notes.md` (+ `transcript.md` when fetchable) |
+| 5 | [steps/step-5-archive-threads.md](steps/step-5-archive-threads.md) | Fetch thread replies, render markdown, write `<huddle-folder>/thread.md` |
+
+## VAULT LAYOUT
+
+One folder per huddle, named `YYYY-MM-DD-HHMM-<channel>` (UTC huddle start,
+derived from the huddle's `thread_ts` so Steps 4 and 6 pair automatically):
+
+```
+huddles/
+└── 2026-08-20-1529-pm-standup/
+    ├── notes.md        # AI canvas notes rendered as markdown (Step 4)
+    ├── thread.md       # huddle thread messages (Step 5)
+    └── transcript.md   # full spoken transcript — only when a token can fetch it (Step 4)
+```
 
 ---
 
@@ -87,11 +99,11 @@ Do not read ahead. Only load the next step file after the current step completes
 |------|-----------|---------|
 | /tmp/huddle-channels.tsv | Step 1 | Step 2 |
 | /tmp/huddle-files.tsv | Step 2 | Step 4 |
-| /tmp/vault-existing.txt | Step 3 | Step 4 |
-| /tmp/huddle-upload.md | Step 4 | Step 4 (intermediate) |
-| /tmp/huddle-log.txt | Steps 4, 6 | printed to stdout |
-| /tmp/huddle-blockers.txt | Steps 2, 5 | error summary (missing scopes / invites) |
-| /tmp/huddle-threads.tsv | Step 5 | Step 6 |
-| /tmp/huddle-users.tsv | Step 1 | Steps 4, 6 |
+| /tmp/huddle-threads.tsv | Step 2 | Steps 4 (folder pairing), 5 |
+| /tmp/vault-existing.txt | Step 3 | report only |
+| /tmp/huddle-upload.md | Steps 4, 5 | intermediate |
+| /tmp/huddle-log.txt | Steps 4, 5 | printed to stdout |
+| /tmp/huddle-blockers.txt | Step 2 | error summary (missing scopes / invites) |
+| /tmp/huddle-users.tsv | Step 1 | Steps 4, 5 |
 | /tmp/huddle-users.sed | Step 1 | Step 4 (name substitution) |
-| /tmp/huddle-transcript.md | Step 6 | Step 6 (intermediate) |
+| /tmp/huddle-channels.sed | Step 1 | Step 4 (channel-ID → name in titles) |

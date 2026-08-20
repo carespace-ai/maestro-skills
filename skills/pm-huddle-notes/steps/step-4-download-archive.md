@@ -1,32 +1,54 @@
-# Step 4: Download + Archive New Huddles → /tmp/huddle-log.txt
+# Step 4: Download + Archive New Huddles → vault folders + /tmp/huddle-log.txt
 
-Downloads canvas content via `url_private`, strips to plaintext, writes to vault.
-Uses sha-based GitHub PUT — safe if file already exists (updates instead of erroring).
-Filename collision on same-minute huddles resolved with file_id suffix.
+Each huddle gets ONE FOLDER in the vault, named after the huddle's UTC start time:
+
+```
+huddles/2026-08-20-1529-pm-standup/
+├── notes.md        # AI canvas notes, rendered as markdown (this step)
+├── thread.md       # huddle thread messages (Step 5)
+└── transcript.md   # full spoken transcript, only when a token can fetch it (this step)
+```
+
+The folder anchor is the huddle's `thread_ts` (extracted from the canvas's
+"View huddle in channel" link) so notes and thread land in the same folder;
+falls back to the canvas creation time if no link is present.
+
+Canvas HTML is converted to GitHub-flavored markdown via `scripts/canvas2md.py`
+(headings, nested lists, bold, links preserved; emoji shortcodes left for GitHub
+to render). User mentions are bolded and resolved to display names.
 
 ```bash
 source ~/.claude/skills/_pm-shared/context.sh
+CANVAS2MD=~/.claude/skills/pm-huddle-notes/scripts/canvas2md.py
 > /tmp/huddle-log.txt
 WRITTEN=0; SKIPPED=0; ERRORS=0; ITER=0; MAX=$HUDDLE_MAX_PER_RUN
+
+# Helper: create-or-update one vault file from /tmp/huddle-upload.md
+# Usage: vault_put <path-in-repo> <commit-msg>   → echoes OK / ERROR
+vault_put() {
+  local dest="$1" msg="$2"
+  local b64 sha payload result
+  b64=$(base64 -w0 /tmp/huddle-upload.md)
+  sha=$(gh api "repos/$HUDDLE_VAULT_REPO/contents/$dest" --jq '.sha' 2>/dev/null || echo "")
+  if [ -n "$sha" ]; then
+    payload=$(jq -n --arg msg "$msg" --arg content "$b64" --arg sha "$sha" \
+      '{message: $msg, content: $content, sha: $sha}')
+  else
+    payload=$(jq -n --arg msg "$msg" --arg content "$b64" \
+      '{message: $msg, content: $content}')
+  fi
+  result=$(gh api "repos/$HUDDLE_VAULT_REPO/contents/$dest" \
+    -X PUT --input - <<< "$payload" --jq '.content.name // "ERROR"' 2>&1)
+  if [ "$result" = "ERROR" ] || echo "$result" | grep -q '"message"'; then
+    echo "ERROR: $dest → $result" >> /tmp/huddle-log.txt; echo ERROR
+  else
+    echo OK
+  fi
+}
 
 while IFS=$'\t' read -r channel file_id created_ts name url_private; do
   [ $WRITTEN -ge $MAX ] && echo "HIT MAX $MAX writes — stopping" >> /tmp/huddle-log.txt && break
   ITER=$((ITER+1))
-
-  # -u: filenames must be timezone-independent (UTC) so every runner agrees
-  FDATE=$(date -u -d "@$created_ts" +%Y-%m-%d 2>/dev/null || echo "unknown")
-  FTIME=$(date -u -d "@$created_ts" +%H%M       2>/dev/null || echo "0000")
-  # Include file_id suffix to prevent same-minute collisions
-  FNAME="${FDATE}-${FTIME}-${file_id}.md"
-
-  # Skip if already in vault — match on the immutable Slack file ID, NOT the
-  # full filename: the HHMM part is rendered in the runner's local timezone,
-  # so name-based matching would duplicate files across differently-zoned runners
-  if grep -qF "$file_id" /tmp/vault-existing.txt 2>/dev/null; then
-    SKIPPED=$((SKIPPED+1))
-    echo "SKIP (exists): $FNAME" >> /tmp/huddle-log.txt
-    continue
-  fi
 
   # Skip if no URL
   if [ -z "$url_private" ]; then
@@ -38,16 +60,42 @@ while IFS=$'\t' read -r channel file_id created_ts name url_private; do
   # Download raw canvas content
   RAW=$(curl -sL "$url_private" -H "Authorization: Bearer $SLACK_BOT_TOKEN")
 
-  # Strip HTML tags to plaintext if content looks like HTML.
-  # NOTE: canvas exports start with <div class="quip-canvas-content"> — no
-  # <html>/<!DOCTYPE — so detect ANY opening tag, not just document headers
-  # (the old check silently archived raw HTML). Block-level closers become
-  # newlines first so the plaintext keeps its structure.
+  # Folder anchor = huddle start ts. Resolution chain (each source is missing on
+  # some canvases, verified live): (1) files.info shares.thread_ts, (2) the
+  # "View huddle in channel" link inside the canvas HTML, (3) the latest huddle
+  # thread in the same channel that started ≤3h before the canvas was created,
+  # (4) the canvas creation time.
+  FINFO=$(curl -s "https://slack.com/api/files.info?file=${file_id}" \
+    -H "Authorization: Bearer $SLACK_BOT_TOKEN")
+  HUDDLE_TS=$(echo "$FINFO" | jq -r '[.file.shares // {} | .. | objects | .thread_ts? // empty] | first // ""')
+  [ -z "$HUDDLE_TS" ] && \
+    HUDDLE_TS=$(printf '%s' "$RAW" | grep -o 'thread_ts=[0-9]*\.[0-9]*' | head -1 | cut -d= -f2)
+  ANCHOR=${HUDDLE_TS%%.*}
+  if [ -z "$ANCHOR" ] && [ -s /tmp/huddle-threads.tsv ]; then
+    ANCHOR=$(awk -F'\t' -v ch="$channel" -v c="$created_ts" \
+      '$1==ch { t=int($3); if (t<=c && c-t<10800 && t>best) best=t } END{if(best) print best}' \
+      /tmp/huddle-threads.tsv)
+    [ -n "$ANCHOR" ] && HUDDLE_TS=$(awk -F'\t' -v ch="$channel" -v a="$ANCHOR" \
+      '$1==ch && int($3)==a {print $3; exit}' /tmp/huddle-threads.tsv)
+  fi
+  [ -z "$ANCHOR" ] && ANCHOR=$created_ts
+  # -u: folder names must be timezone-independent (UTC) so every runner agrees
+  FDATE=$(date -u -d "@$ANCHOR" +%Y-%m-%d 2>/dev/null || echo "unknown")
+  FTIME=$(date -u -d "@$ANCHOR" +%H%M       2>/dev/null || echo "0000")
+  DIR="${FDATE}-${FTIME}-${channel}"
+  DEST="$HUDDLE_VAULT_PATH/$DIR/notes.md"
+
+  # Idempotency: skip if notes.md already exists in this huddle's folder
+  if gh api "repos/$HUDDLE_VAULT_REPO/contents/$DEST" --jq '.sha' >/dev/null 2>&1; then
+    SKIPPED=$((SKIPPED+1))
+    echo "SKIP (exists): $DIR/notes.md" >> /tmp/huddle-log.txt
+    continue
+  fi
+
+  # Render to markdown. Canvas exports start with <div class="quip-canvas-content">
+  # (no <html>/<!DOCTYPE>) — detect ANY opening tag.
   if echo "$RAW" | grep -q '<[a-zA-Z][^>]*>'; then
-    CONTENT=$(printf '%s' "$RAW" \
-      | sed 's#</p>#\n#g; s#</li>#\n#g; s#</h[1-6]>#\n\n#g; s#<br/>#\n#g; s#<hr[^>]*>#\n---\n#g' \
-      | sed 's/<[^>]*>//g; /^[[:space:]]*$/d' \
-      | sed 's/&amp;/\&/g; s/&lt;/</g; s/&gt;/>/g; s/&nbsp;/ /g; s/&#39;/'"'"'/g')
+    CONTENT=$(printf '%s' "$RAW" | python3 "$CANVAS2MD")
   elif echo "$RAW" | jq . >/dev/null 2>&1; then
     # JSON canvas format — extract text blocks
     CONTENT=$(echo "$RAW" | jq -r '
@@ -55,13 +103,13 @@ while IFS=$'\t' read -r channel file_id created_ts name url_private; do
          | (.text // .elements // []) | if type == "array" then .[].text? // "" else . end
     ' 2>/dev/null | grep -v '^$')
   else
-    # Already plaintext
     CONTENT="$RAW"
   fi
 
-  # Substitute raw Slack user IDs with display names (map built in Step 1;
-  # no-op when users:read is missing)
-  [ -s /tmp/huddle-users.sed ] && CONTENT=$(printf '%s' "$CONTENT" | sed -f /tmp/huddle-users.sed)
+  # Bold user mentions, then resolve user IDs → names and channel IDs → names
+  CONTENT=$(printf '%s' "$CONTENT" | sed 's/@\(U[A-Z0-9]\{8,\}\)/**@\1**/g')
+  [ -s /tmp/huddle-users.sed ]    && CONTENT=$(printf '%s' "$CONTENT" | sed -f /tmp/huddle-users.sed)
+  [ -s /tmp/huddle-channels.sed ] && CONTENT=$(printf '%s' "$CONTENT" | sed -f /tmp/huddle-channels.sed)
 
   # Discover the huddle_transcript file referenced in the canvas footer.
   # Bot tokens CANNOT download huddle_transcript blobs (Slack 302s to login) —
@@ -85,13 +133,13 @@ while IFS=$'\t' read -r channel file_id created_ts name url_private; do
     continue
   fi
 
-  # Build vault file (use printf to avoid heredoc HEOF collision)
   {
     printf -- '---\n'
     printf 'date: %s\n' "$FDATE"
     printf 'source: slack-huddle\n'
     printf 'channel: "%s"\n' "$channel"
     printf 'slack_file_id: "%s"\n' "$file_id"
+    [ -n "$HUDDLE_TS" ] && printf 'huddle_thread_ts: "%s"\n' "$HUDDLE_TS"
     [ -n "$TR_ID" ] && printf 'transcript_file_id: "%s"\n' "$TR_ID"
     [ -n "$TR_PERMALINK" ] && printf 'transcript_url: "%s"\n' "$TR_PERMALINK"
     printf 'archived_by: pm-huddle-notes\n'
@@ -99,45 +147,19 @@ while IFS=$'\t' read -r channel file_id created_ts name url_private; do
     printf '%s\n' "$CONTENT"
   } > /tmp/huddle-upload.md
 
-  B64=$(base64 -w0 /tmp/huddle-upload.md)
-
-  # Check if file exists in vault to get sha (required for update)
-  EXISTING_SHA=$(gh api "repos/$HUDDLE_VAULT_REPO/contents/$HUDDLE_VAULT_PATH/$FNAME" \
-    --jq '.sha' 2>/dev/null || echo "")
-
-  # Build PUT payload
-  if [ -n "$EXISTING_SHA" ]; then
-    PAYLOAD=$(jq -n \
-      --arg msg "huddle: $FDATE from #$channel — updated by pm-huddle-notes" \
-      --arg content "$B64" \
-      --arg sha "$EXISTING_SHA" \
-      '{message: $msg, content: $content, sha: $sha}')
-  else
-    PAYLOAD=$(jq -n \
-      --arg msg "huddle: $FDATE from #$channel — archived by pm-huddle-notes" \
-      --arg content "$B64" \
-      '{message: $msg, content: $content}')
-  fi
-
-  RESULT=$(gh api "repos/$HUDDLE_VAULT_REPO/contents/$HUDDLE_VAULT_PATH/$FNAME" \
-    -X PUT --input - <<< "$PAYLOAD" \
-    --jq '.content.name // "ERROR"' 2>&1)
-
-  if [ "$RESULT" = "ERROR" ] || echo "$RESULT" | grep -q '"message"'; then
-    ERRORS=$((ERRORS+1))
-    echo "ERROR: $FNAME → $RESULT" >> /tmp/huddle-log.txt
-  else
+  if [ "$(vault_put "$DEST" "huddle: $FDATE #$channel — notes archived by pm-huddle-notes")" = "OK" ]; then
     WRITTEN=$((WRITTEN+1))
-    echo "WRITE: $FNAME (#$channel, ${CLEN}c)" >> /tmp/huddle-log.txt
+    echo "WRITE: $DIR/notes.md (${CLEN}c)" >> /tmp/huddle-log.txt
+  else
+    ERRORS=$((ERRORS+1))
   fi
 
   # Best-effort full transcript archive (works only with a token Slack lets
   # download huddle_transcript files — currently NOT bot tokens)
   if [ -n "$TR_ID" ] && [ -n "$TR_DL" ]; then
-    TNAME="${FDATE}-${FTIME}-${TR_ID}-fulltranscript.md"
-    # ID-based skip check (timezone-safe, same rationale as above)
-    if grep -qF "$TR_ID" /tmp/vault-existing.txt 2>/dev/null; then
-      echo "SKIP (exists): $TNAME" >> /tmp/huddle-log.txt
+    TDEST="$HUDDLE_VAULT_PATH/$DIR/transcript.md"
+    if gh api "repos/$HUDDLE_VAULT_REPO/contents/$TDEST" --jq '.sha' >/dev/null 2>&1; then
+      echo "SKIP (exists): $DIR/transcript.md" >> /tmp/huddle-log.txt
     else
       TRAW=$(curl -sL "$TR_DL" -H "Authorization: Bearer ${SLACK_USER_TOKEN:-$SLACK_BOT_TOKEN}")
       if [ -n "$TRAW" ] && ! printf '%s' "$TRAW" | head -c 300 | grep -qi '<!DOCTYPE html\|<html'; then
@@ -151,25 +173,17 @@ while IFS=$'\t' read -r channel file_id created_ts name url_private; do
           printf 'slack_file_id: "%s"\n' "$TR_ID"
           printf 'archived_by: pm-huddle-notes\n'
           printf -- '---\n\n'
+          printf '# :studio_microphone: Full transcript — #%s — %s\n\n' "$channel" "$FDATE"
           printf '%s\n' "$TCONTENT"
         } > /tmp/huddle-upload.md
-        B64=$(base64 -w0 /tmp/huddle-upload.md)
-        TSHA=$(gh api "repos/$HUDDLE_VAULT_REPO/contents/$HUDDLE_VAULT_PATH/$TNAME" --jq '.sha' 2>/dev/null || echo "")
-        if [ -n "$TSHA" ]; then
-          TPAYLOAD=$(jq -n --arg msg "huddle full transcript: $FDATE from #$channel" --arg content "$B64" --arg sha "$TSHA" '{message: $msg, content: $content, sha: $sha}')
-        else
-          TPAYLOAD=$(jq -n --arg msg "huddle full transcript: $FDATE from #$channel" --arg content "$B64" '{message: $msg, content: $content}')
-        fi
-        TRESULT=$(gh api "repos/$HUDDLE_VAULT_REPO/contents/$HUDDLE_VAULT_PATH/$TNAME" \
-          -X PUT --input - <<< "$TPAYLOAD" --jq '.content.name // "ERROR"' 2>&1)
-        if [ "$TRESULT" = "ERROR" ] || echo "$TRESULT" | grep -q '"message"'; then
-          echo "ERROR: $TNAME → $TRESULT" >> /tmp/huddle-log.txt
-        else
+        if [ "$(vault_put "$TDEST" "huddle: $FDATE #$channel — full transcript archived by pm-huddle-notes")" = "OK" ]; then
           WRITTEN=$((WRITTEN+1))
-          echo "WRITE: $TNAME (full transcript)" >> /tmp/huddle-log.txt
+          echo "WRITE: $DIR/transcript.md" >> /tmp/huddle-log.txt
+        else
+          ERRORS=$((ERRORS+1))
         fi
       else
-        echo "INFO: transcript $TR_ID not downloadable with current token (Slack gates huddle_transcript files; permalink recorded in $FNAME)" >> /tmp/huddle-log.txt
+        echo "INFO: transcript $TR_ID not downloadable with current token (Slack gates huddle_transcript files; permalink recorded in notes.md)" >> /tmp/huddle-log.txt
       fi
     fi
   fi

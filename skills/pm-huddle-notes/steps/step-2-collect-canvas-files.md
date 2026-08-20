@@ -9,7 +9,8 @@ Falls back to scanning `conversations.history` for huddle-generated canvas links
 ```bash
 source ~/.claude/skills/_pm-shared/context.sh
 OLDEST=$(( $(date +%s) - HUDDLE_LOOKBACK_DAYS * 86400 ))
-> /tmp/huddle-files.tsv   # channel<TAB>file_id<TAB>created_ts<TAB>name<TAB>url_private
+> /tmp/huddle-files.tsv     # channel<TAB>file_id<TAB>created_ts<TAB>name<TAB>url_private
+> /tmp/huddle-threads.tsv   # channel<TAB>ch_id<TAB>thread_ts<TAB>started_ts<TAB>participants
 > /tmp/huddle-blockers.txt
 
 log_blocker() {  # $1=api $2=channel $3=error
@@ -49,6 +50,16 @@ for ch in $HUDDLE_SOURCE_CHANNELS; do
         | [$ch, .id, (.created|tostring), (.name // "huddle-note"), (.url_private // "")]
         | @tsv
       ' >> /tmp/huddle-files.tsv 2>/dev/null
+
+    # Huddle thread anchors (used for per-huddle folder naming and Step 5)
+    echo "$RESP" | jq -r --arg ch "$ch" --arg id "$CH_ID" '
+        .messages[]?
+        | select(.subtype == "huddle_thread")
+        | [$ch, $id, .ts,
+           ((.room.created // (.ts | tonumber | floor)) | tostring),
+           ((.room.participant_history // .room.participants // []) | join(","))]
+        | @tsv
+      ' >> /tmp/huddle-threads.tsv
   fi
 
   sleep 0.3
@@ -59,6 +70,7 @@ sort -t$'\t' -k2,2 -u /tmp/huddle-files.tsv > /tmp/huddle-files-dedup.tsv
 mv /tmp/huddle-files-dedup.tsv /tmp/huddle-files.tsv
 
 echo "Canvas files found: $(wc -l < /tmp/huddle-files.tsv)"
+echo "Huddle threads found: $(wc -l < /tmp/huddle-threads.tsv)"
 awk -F'\t' '{print $1, $4}' /tmp/huddle-files.tsv
 
 # Zero files AND blockers present = the run is broken, not "quiet" — fail loudly

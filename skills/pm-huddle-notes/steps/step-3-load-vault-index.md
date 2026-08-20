@@ -1,5 +1,9 @@
 # Step 3: Load Vault Index → /tmp/vault-existing.txt
 
+Lists the per-huddle folders already in the vault. Informational — the write
+steps check existence per file path (`gh api .../contents/<path> --jq .sha`),
+which is what makes re-runs idempotent.
+
 ```bash
 source ~/.claude/skills/_pm-shared/context.sh
 
