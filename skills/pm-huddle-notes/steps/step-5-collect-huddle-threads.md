@@ -39,25 +39,5 @@ for ch in $HUDDLE_SOURCE_CHANNELS; do
 done
 
 echo "Huddle threads found: $(wc -l < /tmp/huddle-threads.tsv)"
-
-# ── User map for name resolution in transcripts ──────────────────────
-> /tmp/huddle-users.tsv   # user_id<TAB>display_name
-CURSOR=""
-while true; do
-  URL="https://slack.com/api/users.list?limit=200"
-  [ -n "$CURSOR" ] && URL="${URL}&cursor=${CURSOR}"
-  PAGE=$(curl -s "$URL" -H "Authorization: Bearer $SLACK_BOT_TOKEN")
-  [ "$(echo "$PAGE" | jq -r '.ok')" != "true" ] && \
-    echo "WARN: users.list → $(echo "$PAGE" | jq -r '.error') — transcripts will show raw IDs" && break
-  echo "$PAGE" | jq -r '
-      .members[]?
-      | [.id, (((.profile.display_name // "") | if . == "" then null else . end)
-               // .real_name // .name)]
-      | @tsv
-    ' >> /tmp/huddle-users.tsv
-  CURSOR=$(echo "$PAGE" | jq -r '.response_metadata.next_cursor // empty')
-  [ -z "$CURSOR" ] && break
-  sleep 0.3
-done
-echo "Users mapped: $(wc -l < /tmp/huddle-users.tsv)"
+# (user-ID→name map is built in Step 1 → /tmp/huddle-users.tsv)
 ```

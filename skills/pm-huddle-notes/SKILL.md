@@ -40,6 +40,18 @@ Setup notes:
   non-member bots even with `groups:read`, and `conversations.history`
   returns `not_in_channel` for public channels the bot hasn't joined.
 
+## TRANSCRIPT ACCESS (verified 2026-08-20)
+
+Slack stores each huddle's spoken transcript as a `huddle_transcript` file,
+referenced in the AI-notes canvas footer (`File ID: sf:F...`). `files.info`
+returns its metadata to bot tokens, but downloading the blob **302-redirects
+to the workspace login for bot tokens** — a Slack platform restriction, not a
+scope issue. Step 4 therefore always records `transcript_file_id` +
+`transcript_url` in the archived note's frontmatter, and attempts the full
+download with `$SLACK_USER_TOKEN` (a user `xoxp-` token) when set, falling
+back to the bot token. The archivable records today are: the AI-notes canvas
+(timestamped, per-speaker — Steps 2/4) and the huddle thread (Steps 5/6).
+
 ---
 
 ## EXECUTION PROTOCOL
@@ -80,5 +92,6 @@ Do not read ahead. Only load the next step file after the current step completes
 | /tmp/huddle-log.txt | Steps 4, 6 | printed to stdout |
 | /tmp/huddle-blockers.txt | Steps 2, 5 | error summary (missing scopes / invites) |
 | /tmp/huddle-threads.tsv | Step 5 | Step 6 |
-| /tmp/huddle-users.tsv | Step 5 | Step 6 |
+| /tmp/huddle-users.tsv | Step 1 | Steps 4, 6 |
+| /tmp/huddle-users.sed | Step 1 | Step 4 (name substitution) |
 | /tmp/huddle-transcript.md | Step 6 | Step 6 (intermediate) |

@@ -18,12 +18,15 @@ while IFS=$'\t' read -r channel ch_id thread_ts started participants; do
   [ $TWRITTEN -ge $MAX ] && echo "HIT MAX $MAX transcript writes — stopping" >> /tmp/huddle-log.txt && break
 
   EPOCH=${started%%.*}
-  FDATE=$(date -d "@$EPOCH" +%Y-%m-%d 2>/dev/null || echo "unknown")
-  FTIME=$(date -d "@$EPOCH" +%H%M       2>/dev/null || echo "0000")
+  # -u: filenames must be timezone-independent (UTC) so every runner agrees
+  FDATE=$(date -u -d "@$EPOCH" +%Y-%m-%d 2>/dev/null || echo "unknown")
+  FTIME=$(date -u -d "@$EPOCH" +%H%M       2>/dev/null || echo "0000")
   TSID=$(echo "$thread_ts" | tr '.' '-')
   FNAME="${FDATE}-${FTIME}-huddle-${TSID}-transcript.md"
 
-  if grep -qF "$FNAME" /tmp/vault-existing.txt 2>/dev/null; then
+  # ID-based skip check: match on the thread-ts token, not the full filename —
+  # the HHMM part is timezone-dependent and would duplicate across runners
+  if grep -qF "huddle-${TSID}" /tmp/vault-existing.txt 2>/dev/null; then
     TSKIPPED=$((TSKIPPED+1))
     echo "SKIP (exists): $FNAME" >> /tmp/huddle-log.txt
     continue
@@ -43,7 +46,7 @@ while IFS=$'\t' read -r channel ch_id thread_ts started participants; do
       | select((.text // "") != "" or ((.files // []) | length) > 0)
       | "[" + (.ts | tonumber | floor | strftime("%H:%M")) + "] "
         + ($u[.user // ""] // .user // (.bot_profile.name // "bot")) + ": "
-        + (.text // "")
+        + ((.text // "") | gsub("<@(?<id>U[A-Z0-9]+)>"; "@" + ($u[.id] // .id)))
         + (if ((.files // []) | length) > 0
            then " [files: " + ((.files // []) | map(.name // .id) | join(", ")) + "]"
            else "" end)

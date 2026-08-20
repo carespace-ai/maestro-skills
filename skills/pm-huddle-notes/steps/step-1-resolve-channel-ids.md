@@ -44,4 +44,31 @@ if [ "$UNRESOLVED" -eq "$(echo $HUDDLE_SOURCE_CHANNELS | wc -w)" ]; then
   echo "FATAL: no source channel could be resolved — nothing to collect. Aborting."
   exit 1
 fi
+
+# ── User map (user_id → display name) for name resolution in notes/transcripts ──
+# Degrades gracefully: without users:read, content keeps raw U-IDs.
+> /tmp/huddle-users.tsv   # user_id<TAB>display_name
+CURSOR=""
+while true; do
+  URL="https://slack.com/api/users.list?limit=200"
+  [ -n "$CURSOR" ] && URL="${URL}&cursor=${CURSOR}"
+  PAGE=$(curl -s "$URL" -H "Authorization: Bearer $SLACK_BOT_TOKEN")
+  [ "$(echo "$PAGE" | jq -r '.ok')" != "true" ] && \
+    echo "WARN: users.list → $(echo "$PAGE" | jq -r '.error') — archived content will show raw user IDs" && break
+  echo "$PAGE" | jq -r '
+      .members[]?
+      | [.id, (((.profile.display_name // "") | if . == "" then null else . end)
+               // .real_name // .name)]
+      | @tsv
+    ' >> /tmp/huddle-users.tsv
+  CURSOR=$(echo "$PAGE" | jq -r '.response_metadata.next_cursor // empty')
+  [ -z "$CURSOR" ] && break
+  sleep 0.3
+done
+echo "Users mapped: $(wc -l < /tmp/huddle-users.tsv)"
+
+# sed script for substituting raw U-IDs with names in canvas/transcript text
+# (| \ & stripped from names so they can't break the sed expression)
+awk -F'\t' 'NF>=2 {n=$2; gsub(/[|\\&]/, "", n); print "s|" $1 "|" n "|g"}' \
+  /tmp/huddle-users.tsv > /tmp/huddle-users.sed
 ```
