@@ -53,10 +53,20 @@ while IFS=$'\t' read -r channel ch_id thread_ts started participants; do
     fi
   fi
 
-  # ── Try to download the full transcript (only user tokens succeed) ──
+  # ── Try to download the full transcript ──
+  # Slack hard-blocks huddle_transcript downloads for ALL OAuth tokens (bot and
+  # user; verified 2026-08-20: CDN 302s to login, files.sharedPublicURL returns
+  # not_allowed for this filetype only). The ONLY credential Slack serves them
+  # to is a web-session cookie — set SLACK_COOKIE_D (the `d` cookie value,
+  # xoxd-...) as a runner secret. Falls back to token auth in case Slack ever
+  # opens it up.
   TCONTENT=""
   if [ -n "$TR_DL" ]; then
-    TRAW=$(curl -sL "$TR_DL" -H "Authorization: Bearer ${SLACK_USER_TOKEN:-$SLACK_BOT_TOKEN}")
+    if [ -n "${SLACK_COOKIE_D:-}" ]; then
+      TRAW=$(curl -sL "$TR_DL" -H "Cookie: d=${SLACK_COOKIE_D}")
+    else
+      TRAW=$(curl -sL "$TR_DL" -H "Authorization: Bearer ${SLACK_USER_TOKEN:-$SLACK_BOT_TOKEN}")
+    fi
     if [ -n "$TRAW" ] && ! printf '%s' "$TRAW" | head -c 300 | grep -qi '<!DOCTYPE html\|<html'; then
       if printf '%s' "$TRAW" | jq . >/dev/null 2>&1; then
         TCONTENT=$(printf '%s' "$TRAW" | jq -r '.. | .text? // empty' 2>/dev/null | grep -v '^$')
@@ -131,7 +141,7 @@ while IFS=$'\t' read -r channel ch_id thread_ts started participants; do
     if [ -n "$TCONTENT" ]; then
       printf '%s\n\n' "$TCONTENT"
     elif [ -n "$TR_PERMALINK" ]; then
-      printf '_Full transcript pending — Slack only serves huddle transcripts to user tokens; set `SLACK_USER_TOKEN` on the runner to archive it here automatically. [Open transcript in Slack](%s)_\n\n' "$TR_PERMALINK"
+      printf '_Full transcript pending — Slack only serves huddle transcripts to web-session credentials; set `SLACK_COOKIE_D` on the runner to archive it here automatically. [Open transcript in Slack](%s)_\n\n' "$TR_PERMALINK"
     else
       printf '_No transcript file found for this huddle._\n\n'
     fi
