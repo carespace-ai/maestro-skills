@@ -3,8 +3,8 @@
 `thread.md` is the huddle's CONVERSATION file, with two sections:
 
 1. **Transcript** — the full spoken transcript. Slack only serves
-   `huddle_transcript` files to user tokens (`SLACK_USER_TOKEN`); with a bot
-   token this section carries the Slack link and a "pending" marker instead.
+   `huddle_transcript` files to web-session credentials (`SLACK_COOKIE_D`);
+   without it this section carries the Slack link and a "pending" marker.
 2. **Thread messages** — everything typed in the huddle thread.
 
 Upgrade-in-place: if an existing `thread.md` has a pending transcript and the
