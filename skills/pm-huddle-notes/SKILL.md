@@ -46,11 +46,10 @@ Slack stores each huddle's spoken transcript as a `huddle_transcript` file,
 referenced in the AI-notes canvas footer (`File ID: sf:F...`). `files.info`
 returns its metadata to bot tokens, but downloading the blob **302-redirects
 to the workspace login for bot tokens** — a Slack platform restriction, not a
-scope issue. Step 4 therefore always records `transcript_file_id` +
-`transcript_url` in the archived note's frontmatter, and attempts the full
-download with `$SLACK_USER_TOKEN` (a user `xoxp-` token) when set, falling
-back to the bot token. The archivable records today are: the AI-notes canvas
-(timestamped, per-speaker — Steps 2/4) and the huddle thread (Steps 2/5).
+scope issue. Step 4 records `transcript_file_id` + `transcript_url` in the
+notes.md frontmatter; Step 5 embeds the full transcript into thread.md when
+`$SLACK_USER_TOKEN` (a user `xoxp-` token) can fetch it, and auto-upgrades
+pending thread.md files in place on later runs.
 
 ---
 
@@ -75,8 +74,8 @@ Do not read ahead. Only load the next step file after the current step completes
 | 1 | [steps/step-1-resolve-channel-ids.md](steps/step-1-resolve-channel-ids.md) | Resolve channel names to IDs via paginated conversations.list |
 | 2 | [steps/step-2-collect-canvas-files.md](steps/step-2-collect-canvas-files.md) | Scan channels for canvas files + huddle_thread anchors within lookback window |
 | 3 | [steps/step-3-load-vault-index.md](steps/step-3-load-vault-index.md) | List existing vault huddle folders (informational) |
-| 4 | [steps/step-4-download-archive.md](steps/step-4-download-archive.md) | Render canvas → markdown, write `<huddle-folder>/notes.md` (+ `transcript.md` when fetchable) |
-| 5 | [steps/step-5-archive-threads.md](steps/step-5-archive-threads.md) | Fetch thread replies, render markdown, write `<huddle-folder>/thread.md` |
+| 4 | [steps/step-4-download-archive.md](steps/step-4-download-archive.md) | Render canvas → markdown, write `<huddle-folder>/notes.md` + build transcript map |
+| 5 | [steps/step-5-archive-threads.md](steps/step-5-archive-threads.md) | Fetch thread replies, render markdown, write `<huddle-folder>/thread.md` (transcript + thread messages) |
 
 ## VAULT LAYOUT
 
@@ -87,8 +86,9 @@ derived from the huddle's `thread_ts` so Steps 4 and 5 pair automatically):
 huddles/
 └── 2026-08-20-1529-pm-standup/
     ├── notes.md        # AI canvas notes rendered as markdown (Step 4)
-    ├── thread.md       # huddle thread messages (Step 5)
-    └── transcript.md   # full spoken transcript — only when a token can fetch it (Step 4)
+    └── thread.md       # the conversation (Step 5): "## Transcript" (full spoken
+                        #   transcript — pending link until SLACK_USER_TOKEN is set,
+                        #   auto-upgraded in place once it is) + "## Thread messages"
 ```
 
 ---
@@ -100,6 +100,7 @@ huddles/
 | /tmp/huddle-channels.tsv | Step 1 | Step 2 |
 | /tmp/huddle-files.tsv | Step 2 | Step 4 |
 | /tmp/huddle-threads.tsv | Step 2 | Steps 4 (folder pairing), 5 |
+| /tmp/huddle-transcripts.tsv | Step 4 | Step 5 (transcript embedding) |
 | /tmp/vault-existing.txt | Step 3 | report only |
 | /tmp/huddle-upload.md | Steps 4, 5 | intermediate |
 | /tmp/huddle-log.txt | Steps 4, 5 | printed to stdout |

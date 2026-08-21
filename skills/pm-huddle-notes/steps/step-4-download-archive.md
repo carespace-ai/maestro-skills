@@ -5,8 +5,7 @@ Each huddle gets ONE FOLDER in the vault, named after the huddle's UTC start tim
 ```
 huddles/2026-08-20-1529-pm-standup/
 ├── notes.md        # AI canvas notes, rendered as markdown (this step)
-├── thread.md       # huddle thread messages (Step 5)
-└── transcript.md   # full spoken transcript, only when a token can fetch it (this step)
+└── thread.md       # the conversation: full transcript + thread messages (Step 5)
 ```
 
 The folder anchor is the huddle's `thread_ts` (extracted from the canvas's
@@ -21,6 +20,7 @@ to render). User mentions are bolded and resolved to display names.
 source ~/.claude/skills/_pm-shared/context.sh
 CANVAS2MD=~/.claude/skills/pm-huddle-notes/scripts/canvas2md.py
 > /tmp/huddle-log.txt
+> /tmp/huddle-transcripts.tsv   # dir<TAB>tr_id<TAB>tr_permalink<TAB>tr_dl (for Step 5)
 WRITTEN=0; SKIPPED=0; ERRORS=0; ITER=0; MAX=$HUDDLE_MAX_PER_RUN
 
 # Helper: create-or-update one vault file from /tmp/huddle-upload.md
@@ -85,6 +85,23 @@ while IFS=$'\t' read -r channel file_id created_ts name url_private; do
   DIR="${FDATE}-${FTIME}-${channel}"
   DEST="$HUDDLE_VAULT_PATH/$DIR/notes.md"
 
+  # Discover the huddle_transcript file referenced in the canvas footer and
+  # record it for Step 5 (which embeds the transcript into thread.md).
+  # Runs BEFORE the skip-check so re-runs can upgrade thread.md files.
+  # Bot tokens CANNOT download huddle_transcript blobs (Slack 302s to login) —
+  # a user token via SLACK_USER_TOKEN is required for the actual content.
+  TR_ID=$(printf '%s' "$RAW" | grep -o 'File ID: sf:F[A-Z0-9]*' | head -1 | sed 's/.*sf://')
+  TR_PERMALINK=""; TR_DL=""
+  if [ -n "$TR_ID" ]; then
+    TINFO=$(curl -s "https://slack.com/api/files.info?file=${TR_ID}" \
+      -H "Authorization: Bearer $SLACK_BOT_TOKEN")
+    if [ "$(echo "$TINFO" | jq -r '.ok')" = "true" ]; then
+      TR_PERMALINK=$(echo "$TINFO" | jq -r '.file.permalink // ""')
+      TR_DL=$(echo "$TINFO" | jq -r '.file.url_private_download // .file.url_private // ""')
+    fi
+    printf '%s\t%s\t%s\t%s\n' "$DIR" "$TR_ID" "$TR_PERMALINK" "$TR_DL" >> /tmp/huddle-transcripts.tsv
+  fi
+
   # Idempotency: skip if notes.md already exists in this huddle's folder
   if gh api "repos/$HUDDLE_VAULT_REPO/contents/$DEST" --jq '.sha' >/dev/null 2>&1; then
     SKIPPED=$((SKIPPED+1))
@@ -110,21 +127,6 @@ while IFS=$'\t' read -r channel file_id created_ts name url_private; do
   CONTENT=$(printf '%s' "$CONTENT" | sed 's/@\(U[A-Z0-9]\{8,\}\)/**@\1**/g')
   [ -s /tmp/huddle-users.sed ]    && CONTENT=$(printf '%s' "$CONTENT" | sed -f /tmp/huddle-users.sed)
   [ -s /tmp/huddle-channels.sed ] && CONTENT=$(printf '%s' "$CONTENT" | sed -f /tmp/huddle-channels.sed)
-
-  # Discover the huddle_transcript file referenced in the canvas footer.
-  # Bot tokens CANNOT download huddle_transcript blobs (Slack 302s to login) —
-  # metadata is always recorded in frontmatter; full content is archived only
-  # if a token with access is available (set SLACK_USER_TOKEN to try a user token).
-  TR_ID=$(printf '%s' "$CONTENT" | grep -o 'File ID: sf:F[A-Z0-9]*' | head -1 | sed 's/.*sf://')
-  TR_PERMALINK=""; TR_DL=""
-  if [ -n "$TR_ID" ]; then
-    TINFO=$(curl -s "https://slack.com/api/files.info?file=${TR_ID}" \
-      -H "Authorization: Bearer $SLACK_BOT_TOKEN")
-    if [ "$(echo "$TINFO" | jq -r '.ok')" = "true" ]; then
-      TR_PERMALINK=$(echo "$TINFO" | jq -r '.file.permalink // ""')
-      TR_DL=$(echo "$TINFO" | jq -r '.file.url_private_download // .file.url_private // ""')
-    fi
-  fi
 
   CLEN=${#CONTENT}
   if [ "$CLEN" -lt "$HUDDLE_MIN_CONTENT_CHARS" ]; then
@@ -152,40 +154,6 @@ while IFS=$'\t' read -r channel file_id created_ts name url_private; do
     echo "WRITE: $DIR/notes.md (${CLEN}c)" >> /tmp/huddle-log.txt
   else
     ERRORS=$((ERRORS+1))
-  fi
-
-  # Best-effort full transcript archive (works only with a token Slack lets
-  # download huddle_transcript files — currently NOT bot tokens)
-  if [ -n "$TR_ID" ] && [ -n "$TR_DL" ]; then
-    TDEST="$HUDDLE_VAULT_PATH/$DIR/transcript.md"
-    if gh api "repos/$HUDDLE_VAULT_REPO/contents/$TDEST" --jq '.sha' >/dev/null 2>&1; then
-      echo "SKIP (exists): $DIR/transcript.md" >> /tmp/huddle-log.txt
-    else
-      TRAW=$(curl -sL "$TR_DL" -H "Authorization: Bearer ${SLACK_USER_TOKEN:-$SLACK_BOT_TOKEN}")
-      if [ -n "$TRAW" ] && ! printf '%s' "$TRAW" | head -c 300 | grep -qi '<!DOCTYPE html\|<html'; then
-        TCONTENT=$(printf '%s' "$TRAW" | sed 's/<[^>]*>//g; /^[[:space:]]*$/d')
-        [ -s /tmp/huddle-users.sed ] && TCONTENT=$(printf '%s' "$TCONTENT" | sed -f /tmp/huddle-users.sed)
-        {
-          printf -- '---\n'
-          printf 'date: %s\n' "$FDATE"
-          printf 'source: slack-huddle-full-transcript\n'
-          printf 'channel: "%s"\n' "$channel"
-          printf 'slack_file_id: "%s"\n' "$TR_ID"
-          printf 'archived_by: pm-huddle-notes\n'
-          printf -- '---\n\n'
-          printf '# :studio_microphone: Full transcript — #%s — %s\n\n' "$channel" "$FDATE"
-          printf '%s\n' "$TCONTENT"
-        } > /tmp/huddle-upload.md
-        if [ "$(vault_put "$TDEST" "huddle: $FDATE #$channel — full transcript archived by pm-huddle-notes")" = "OK" ]; then
-          WRITTEN=$((WRITTEN+1))
-          echo "WRITE: $DIR/transcript.md" >> /tmp/huddle-log.txt
-        else
-          ERRORS=$((ERRORS+1))
-        fi
-      else
-        echo "INFO: transcript $TR_ID not downloadable with current token (Slack gates huddle_transcript files; permalink recorded in notes.md)" >> /tmp/huddle-log.txt
-      fi
-    fi
   fi
 
   sleep 0.3
