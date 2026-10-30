@@ -37,6 +37,7 @@
 4. **`oracle-pipeline-lifecycle`** reads group status, then merges (FR17) or closes (FR18) via multi-gitter.
 
 ### Continuous security + PM (parallel operational loops)
+- **PR review**: `pr-auto-review` reviews each PR as it opens (GitHub webhook) with the repo's Context Layer → APPROVE by default, REQUEST_CHANGES only for app-breaking issues, one recheck round, `/maestro approve` override.
 - **SecDevOps**: `carespace-code-review` reviews each open PR (CVE map + HIPAA/OWASP) → PR comment → Slack; `carespace-soc` runs Detect→Audit→Triage→Evidence→Respond; `security-digest` posts a daily feed roundup.
 - **PM**: `pm-*` skills sync ClickUp ⇄ Slack ⇄ GitHub for sprints/standups/backlog/retros, all reading `_pm-shared/context.sh`.
 
@@ -72,6 +73,7 @@ carespace-security-standards ──▶ carespace-security-auditor / code-review 
 | pipeline | target repo | branch + one PR | Repo from issue `Repository` field |
 | _pm-shared | pm-* + security skills | `context.sh` exports | Allow-listed channels + fixed IDs only |
 | carespace-code-review | Slack `#pm-engineering` | findings summary | Mandatory Step 6; counts must match |
+| pr-auto-review | GitHub PR | one review per head SHA (`<!-- maestro-pr-review sha=… -->`) | Never REQUEST_CHANGES without file:line + scenario; Slack only on blocks |
 
 ## Shared Conventions
 
