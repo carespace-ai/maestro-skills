@@ -41,10 +41,12 @@ echo "$OUT" | grep -q '^SHADOW=1$' || fail "prr_shadow should set SHADOW=1"; pas
 DUP="$(mktemp)"; echo '[{"state":"APPROVED","user":{"login":"maestro-bot"},"body":"ok <!-- maestro-pr-review sha=aaaaaaa1111111111111111111111111111111aa verdict=APPROVE -->"}]' > "$DUP"
 expect "duplicate delivery"       "$(guard "$(cat "$FIX/pr-opened.json")" "$DUP")" SKIP
 
-# synchronize: only rechecks a PR the bot blocked (no infinite review loop)
+# synchronize: every new head gets a review (stale approvals are dismissed on
+# push); a PR the bot blocked only gets its blockers rechecked; an overridden
+# PR is left alone
 SYNC="$(mutate pr-opened.json 'p["action"]="synchronize"')"
-expect "sync, never reviewed"     "$(guard "$SYNC")" SKIP
-expect "sync, approved"           "$(guard "$SYNC" "$(reviews APPROVED)")" SKIP
+expect "sync, never reviewed"     "$(guard "$SYNC")" RUN full
+expect "sync, approved → re-review" "$(guard "$SYNC" "$(reviews APPROVED)")" RUN full
 expect "sync, blocked → recheck"  "$(guard "$SYNC" "$(reviews CHANGES_REQUESTED)")" RUN recheck
 expect "sync, block dismissed"    "$(guard "$SYNC" "$(reviews CHANGES_REQUESTED DISMISSED)")" SKIP
 expect "sync, comment after block" "$(guard "$SYNC" "$(reviews CHANGES_REQUESTED COMMENTED)")" RUN recheck

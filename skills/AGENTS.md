@@ -37,7 +37,7 @@
 4. **`oracle-pipeline-lifecycle`** reads group status, then merges (FR17) or closes (FR18) via multi-gitter.
 
 ### Continuous security + PM (parallel operational loops)
-- **PR review**: `pr-auto-review` reviews each PR as it opens (GitHub webhook) with the repo's Context Layer → APPROVE by default, REQUEST_CHANGES only for app-breaking issues, one recheck round, `/maestro approve` override.
+- **PR review**: `pr-auto-review` reviews each PR as it opens and on every new push (GitHub webhook) with the repo's Context Layer → APPROVE by default, REQUEST_CHANGES only for app-breaking issues, one recheck round, `/maestro approve` override.
 - **SecDevOps**: `carespace-code-review` reviews each open PR (CVE map + HIPAA/OWASP) → PR comment → Slack; `carespace-soc` runs Detect→Audit→Triage→Evidence→Respond; `security-digest` posts a daily feed roundup.
 - **PM**: `pm-*` skills sync ClickUp ⇄ Slack ⇄ GitHub for sprints/standups/backlog/retros, all reading `_pm-shared/context.sh`.
 

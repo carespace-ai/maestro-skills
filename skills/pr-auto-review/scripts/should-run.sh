@@ -6,9 +6,11 @@
 # Exit code is always 0; the skill acts on DECISION, not the exit code.
 #
 # MODE (when DECISION=RUN):
-#   full      — PR opened / reopened / ready_for_review → full review
+#   full      — PR opened / reopened / ready_for_review, or a new push on a PR
+#               the bot has not blocked → full review of the new head
 #   recheck   — new push on a PR whose latest bot review is CHANGES_REQUESTED →
 #               only verify the previous blockers were fixed
+#   (a new push after a human override — bot review DISMISSED — is skipped)
 #   override  — a human asked to clear the block (`/maestro approve` comment or
 #               `maestro:override` label) → dismiss the bot's blocking review
 #
@@ -172,9 +174,13 @@ if any(marker in (r.get("body") or "") for r in reviews):
     skip("this head SHA was already reviewed (duplicate delivery)")
 
 if action == "synchronize":
-    if state != "CHANGES_REQUESTED":
-        skip("new push, but the bot has no open CHANGES_REQUESTED (nothing to recheck)")
-    run("recheck", "new push on a PR the bot blocked — verify previous blockers")
+    if state == "CHANGES_REQUESTED":
+        run("recheck", "new push on a PR the bot blocked — verify previous blockers")
+    if state == "DISMISSED":
+        skip("new push, but a human overrode the bot on this PR — stay out")
+    # Branch protection dismisses stale approvals on push, so every new head
+    # needs a fresh review or the PR is stuck waiting for an approve again.
+    run("full", "new push — re-review the new head")
 
 if state == "CHANGES_REQUESTED":
     run("recheck", f"{action} on a PR the bot blocked — verify previous blockers")
