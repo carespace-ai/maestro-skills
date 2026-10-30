@@ -54,7 +54,9 @@ candidate** — it still has to pass the three-part test in SKILL.md STEP 3
 2. **Maestro trigger.** Create a webhook trigger for `pr-auto-review` (same kind as
    `context-layer`'s). Default `input_kwargs` for the shadow week:
    `{"prr_shadow": true, "prr_repos": ["carespace-api"]}`. Remove both keys to go live.
-3. **GitHub org webhook** (`carespace-ai` → Settings → Webhooks): payload URL
+3. **GitHub webhook** — today Maestro's hooks are **per repo** (e.g. carespace-mobile has a
+   push-only hook → the context-layer token). Add a second hook per repo, or one org hook
+   (`carespace-ai` → Settings → Webhooks, needs an org owner): payload URL
    `https://<maestro>/api/v1/webhooks/<trigger-token>`, content type `application/json`,
    events **Pull requests** + **Issue comments** only. The token URL is the only auth on
    this endpoint (no HMAC) — treat it as a secret.
