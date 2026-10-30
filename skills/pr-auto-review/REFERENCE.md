@@ -43,14 +43,18 @@ candidate** — it still has to pass the three-part test in SKILL.md STEP 3
 
 # One-time setup
 
-1. **Secrets — reuse Maestro's.** The skill uses the `GITHUB_TOKEN` (and `SLACK_BOT_TOKEN`
-   for escalations) already saved in Maestro → Settings → Secrets; nothing new to add.
-   The reviewer identity is **whoever owns that token** — `should-run.sh` resolves it via
-   `GET /user`, so PRs authored by that account are skipped (GitHub forbids self-approval)
-   and every other PR shows the approve under that account. For approvals to satisfy
-   branch protection, that account needs **write** access (and a `CODEOWNERS` entry if
-   code-owner review is required). If the reviews should appear as a bot instead of a
-   person, swap the saved token for a machine user's later — no skill change needed.
+1. **Reviewer identity — GitHub App (preferred) or PAT.**
+   - **App:** a `carespace-ai` GitHub App (no webhook; permissions *Pull requests: write*,
+     *Contents: read*, *Issues: read*, *Checks: read*, *Commit statuses: read*, *Metadata:
+     read*) installed on the reviewed repos. Save two Maestro secrets: `PRR_APP_ID` and
+     `PRR_APP_PRIVATE_KEY` (the `.pem` — raw, `\n`-escaped, or base64 on one line).
+     `app-token.sh` mints a 1-hour installation token per run; reviews show as
+     `<slug>[bot]`, so **everyone's** PRs get reviewed, including the PAT owner's.
+     Repo rulesets count an App's approve when it has write access; Apps can't be
+     code owners, so code-owner-required repos still need a human approve.
+   - **PAT fallback** (no App secrets): the saved `GITHUB_TOKEN`'s owner is the reviewer,
+     resolved via `GET /user`; that account's own PRs are skipped (no self-approval).
+   `SLACK_BOT_TOKEN` (escalations) is reused from Maestro's saved secrets either way.
 2. **Maestro trigger.** Create a webhook trigger for `pr-auto-review` (same kind as
    `context-layer`'s). Default `input_kwargs` for the shadow week:
    `{"prr_shadow": true, "prr_repos": ["carespace-api"]}`. Remove both keys to go live.
