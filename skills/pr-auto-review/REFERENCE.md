@@ -43,12 +43,14 @@ candidate** — it still has to pass the three-part test in SKILL.md STEP 3
 
 # One-time setup
 
-1. **Review bot account.** A dedicated GitHub machine user (e.g. `maestro-bot`) with
-   **write** access to the repos — never a colleague's PAT (GitHub forbids approving your
-   own PR, and the review must be attributable). If branch protection requires
-   **code-owner** review, the bot must be listed in `CODEOWNERS`, otherwise its approve
-   won't satisfy the rule. Save its token as the skill's `GITHUB_TOKEN` secret in Maestro.
-   Slack escalation also needs `SLACK_BOT_TOKEN` (same as the PM skills).
+1. **Secrets — reuse Maestro's.** The skill uses the `GITHUB_TOKEN` (and `SLACK_BOT_TOKEN`
+   for escalations) already saved in Maestro → Settings → Secrets; nothing new to add.
+   The reviewer identity is **whoever owns that token** — `should-run.sh` resolves it via
+   `GET /user`, so PRs authored by that account are skipped (GitHub forbids self-approval)
+   and every other PR shows the approve under that account. For approvals to satisfy
+   branch protection, that account needs **write** access (and a `CODEOWNERS` entry if
+   code-owner review is required). If the reviews should appear as a bot instead of a
+   person, swap the saved token for a machine user's later — no skill change needed.
 2. **Maestro trigger.** Create a webhook trigger for `pr-auto-review` (same kind as
    `context-layer`'s). Default `input_kwargs` for the shadow week:
    `{"prr_shadow": true, "prr_repos": ["carespace-api"]}`. Remove both keys to go live.

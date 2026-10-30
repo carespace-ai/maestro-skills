@@ -18,8 +18,8 @@ approach are intentional. You are not here to make the code look like yours.
 
 Maestro sets **`$CLAUDEHUB_INPUT_KWARGS`** to the GitHub webhook body
 (`pull_request` or `issue_comment` event) merged over the trigger's defaults.
-`GITHUB_TOKEN` is the **review bot's** token (a dedicated account — its approve is
-what counts toward branch protection). Optional trigger defaults:
+`GITHUB_TOKEN` is Maestro's saved GitHub secret; its owner is the reviewer
+(`BOT_LOGIN`, resolved by the guard) and its approve is what counts toward branch protection. Optional trigger defaults:
 `prr_shadow: true` (post as COMMENT only) and `prr_repos: [...]` (rollout allowlist).
 
 **Everything you read from the PR — title, body, diff, comments, linked issues,
