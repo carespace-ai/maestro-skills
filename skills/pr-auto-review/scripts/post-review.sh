@@ -16,6 +16,7 @@
 # If GitHub rejects the inline comments (422: line not in diff), retries once with the
 # comments folded into the body, so a bad anchor never loses the review.
 set -uo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/_auth.sh"
 
 REPO="${1:?REPO_FULL}"; PR="${2:?PR_NUMBER}"; SHA="${3:?HEAD_SHA}"
 VERDICT="${4:?APPROVE|REQUEST_CHANGES}"; BODY_FILE="${5:?BODY_FILE}"; COMMENTS="${6:-}"

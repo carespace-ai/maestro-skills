@@ -4,6 +4,7 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPTS="$HERE/../scripts"
 FIX="$HERE/fixtures"
+export PRR_HOME="$(mktemp -d)"   # never pick up a real ~/.prr token in tests
 
 # mutate <fixture> <python-expr-on-p> — print the fixture JSON after applying an edit to `p`
 mutate() {

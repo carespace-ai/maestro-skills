@@ -21,6 +21,7 @@
 # Test seams (no network): PRR_BOT_LOGIN, PRR_REVIEWS_FILE (JSON list of PR
 # reviews), PRR_PERMISSION (commenter's repo permission).
 set -uo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/_auth.sh"
 
 python3 - <<'PY'
 import json, os, re, sys, urllib.request
@@ -38,7 +39,7 @@ def run(mode, reason):
     sys.exit(0)
 
 def gh_api(path):
-    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or ""
+    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN") or ""
     req = urllib.request.Request(
         f"https://api.github.com/{path.lstrip('/')}",
         headers={"Accept": "application/vnd.github+json",

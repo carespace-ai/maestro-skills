@@ -18,6 +18,7 @@
 #
 # Prints KEY=VALUE summary lines. Exits non-zero only if the PR itself can't be read.
 set -uo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/_auth.sh"
 
 REPO="${1:?REPO_FULL}"; PR="${2:?PR_NUMBER}"; BASE_SHA="${3:?BASE_SHA}"; BOT="${4:-}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

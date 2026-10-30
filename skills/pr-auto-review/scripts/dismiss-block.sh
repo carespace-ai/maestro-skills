@@ -5,6 +5,7 @@
 #
 # Usage: dismiss-block.sh <REPO_FULL> <PR_NUMBER> <BOT_LOGIN> <WHO>
 set -uo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/_auth.sh"
 
 REPO="${1:?REPO_FULL}"; PR="${2:?PR_NUMBER}"; BOT="${3:?BOT_LOGIN}"; WHO="${4:?WHO}"
 MSG="Overridden by @$WHO — Maestro review block dismissed."
