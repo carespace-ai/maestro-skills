@@ -1,0 +1,15 @@
+{
+  "action": "opened",
+  "number": 42,
+  "repository": {"full_name": "carespace-ai/carespace-api", "default_branch": "main"},
+  "sender": {"login": "dev-alice"},
+  "pull_request": {
+    "number": 42,
+    "state": "open",
+    "draft": false,
+    "user": {"login": "dev-alice"},
+    "labels": [],
+    "head": {"ref": "feat/123-new-endpoint", "sha": "aaaaaaa1111111111111111111111111111111aa"},
+    "base": {"ref": "main", "sha": "bbbbbbb2222222222222222222222222222222bb"}
+  }
+}

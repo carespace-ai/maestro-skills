@@ -1,0 +1,6 @@
+{
+  "action": "created",
+  "repository": {"full_name": "carespace-ai/carespace-api"},
+  "issue": {"number": 42, "pull_request": {"url": "https://api.github.com/repos/carespace-ai/carespace-api/pulls/42"}},
+  "comment": {"body": "/maestro approve — false positive, the guard is in the module", "user": {"login": "dev-bob"}}
+}

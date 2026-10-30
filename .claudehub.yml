@@ -9,6 +9,11 @@ skills:
     prompt: "/carespace-code-review"
     max_turns: 30
 
+  - name: pr-auto-review
+    description: "Event-driven non-blocking PR review — reads the repo Context Layer, approves by default, requests changes only for app-breaking issues; skips release-please, drafts and bot PRs. Triggered by a GitHub pull_request / issue_comment webhook."
+    prompt: "/pr-auto-review"
+    max_turns: 40
+
   - name: carespace-security-auditor
     description: "Security vulnerability detection — HIPAA, OWASP Top 10, Azure, NestJS/Prisma/React/Flutter"
     prompt: "/carespace-security-auditor"
