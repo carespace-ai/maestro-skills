@@ -1,0 +1,11 @@
+{
+  "repo": "{{repo-name}}",
+  "default_branch": "main",
+  "stacks": {
+    "{{stack}}": ["{{glob of the paths this stack's checklist applies to}}"]
+  },
+  "risk_paths": [
+    {"glob": "{{path glob}}", "why": "{{what breaks if this goes wrong}}"}
+  ],
+  "ci_ignore": ""
+}

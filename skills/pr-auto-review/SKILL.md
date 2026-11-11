@@ -62,8 +62,20 @@ Files land in `$PRR_DIR`. Read, in this order:
    staged under `nodes/` — open the section the diff makes relevant instead of
    guessing. `CONTEXT_STATUS=none` means the repo has no Context Layer yet — review
    from the diff alone; never penalise the PR for it.
-3. `diff.patch` — the change. For >1500 diff lines, read the files that carry
-   risk (migrations, auth, API handlers, shared contracts, config) and skim the rest.
+3. `profile.md` — how **this repo** breaks and what is not worth flagging here,
+   plus the blocker checklist of each stack this PR touches. It sharpens STEP 3; it
+   never lowers the three-part bar. `PROFILE=default` means the repo has no profile
+   yet and you got generic checklists.
+4. `diff.patch` — the change. Every file listed in `risk-files.txt` (and under
+   "Risk files in this PR" in `profile.md`) is read **in full, whatever the size of
+   the PR**. Beyond those, for >1500 diff lines read what carries risk (migrations,
+   auth, API handlers, shared contracts, config) and skim the rest.
+
+5. `relations.md` — only when `RELATIONS` > 0: the cross-repo contracts this PR
+   touches, which side of each this repo is on, and exactly what to verify. The
+   other repo's code is staged under `cross/<repo>/` — **search it** (Grep / Read)
+   rather than trusting what a doc says the other side does. `linked-prs.md` lists
+   PRs in other repos this PR's body points at, with their state.
 
 **Check `DIFF_STATUS` before judging anything:**
 - `ok` → carry on.
@@ -104,8 +116,16 @@ A finding is a **blocker** only if ALL three hold:
 unlikely edge cases, convention drift described in AGENTS.md, anything CI linters
 already enforce. No "nits", no "consider", no praise lists.
 
-Per-stack checklists (NestJS/Prisma, React, Flutter, Python/FastAPI) live in
-`REFERENCE.md` — read it only when the diff touches that stack's risky areas.
+**Cross-repo breaks are judged by `relations.md`, not by instinct.** It says, per
+contract, whether a break is a blocker (the other repo meets the change at once) or
+a heads-up (the other repo is pinned to a release), and it tells you what to do when
+the other repo could not be staged. The three-part test still applies: a cross-repo
+blocker cites the line in this diff **and** the `file:line` in `cross/<repo>/` that
+would fail. When several contracts are touched and the single `⚠️ Heads-up` line
+is not enough, use one line per contract — that is the only exception to "at most one".
+
+The repo's "What breaks here" list and the stack checklists in `profile.md` are
+where to look first; "Not a blocker here" is binding — do not raise those.
 
 ## STEP 4 — Decide + post one review
 
