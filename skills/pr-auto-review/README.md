@@ -301,6 +301,12 @@ change the first PR scoped on purpose, is not one: the reviewer would fail it
 for a reason no review can fix, and the score stops meaning anything. A control
 should be a PR that has been in production for a while without a fix on top.
 
+When a control comes back blocked, read the review before calling it a false
+block. carespace-mobile #796 was a control until the reviewer blocked it on two
+`context.push` calls into another shell branch, which `lib/routing/AGENTS.md`
+forbids. Nobody has confirmed the black page on a device, so it is neither a
+clean control nor a proven bug, and it left the set.
+
 The reviewer must not open `cases.json`; it holds the answers.
 
 ## Not built yet

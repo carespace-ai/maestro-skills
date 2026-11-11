@@ -78,12 +78,12 @@
       }
     },
     {
-      "id": "mobile-796-control",
+      "id": "mobile-779-control",
       "kind": "control",
       "repo": "carespace-ai/carespace-mobile",
-      "pr": 796,
-      "base_sha": "23af2f0478887bb84f9ec79c74c04d6ac613b9c2",
-      "head_sha": "fbf5bab1554e8b8073eeff3d1402ee67ea76879d",
+      "pr": 779,
+      "base_sha": "2703767a38192b41d4da8a64cf537fd3ba8fc799",
+      "head_sha": "787cd1ce25286ce64bef604c1225bd78a7012ff7",
       "truth": "No known defect.",
       "expect": {
         "verdict": "APPROVE"
