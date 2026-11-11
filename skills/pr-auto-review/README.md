@@ -250,7 +250,12 @@ merge for that repo.
 | `scripts/*.py` (others) | Helpers called by the scripts above |
 | `evals/cases.json`, `evals/RUNNER.md` | Eval cases (merged PRs with a known outcome) and how a reviewer runs one |
 | `scripts/eval-stage.sh`, `scripts/eval-grade.py` | Stage an eval case in dry-run, and grade the reviews |
+| `scripts/eval-run.sh` | Runs the whole eval set with one command (stage, review, grade) |
 | `tests/` | `for t in tests/test-*.sh; do bash "$t"; done` (no network, no token) |
+
+CI (`.github/workflows/pr-auto-review-tests.yml`) runs the tests, the registry
+validator and `eval-grade.py --check` on every PR that touches this skill. It does
+not run the eval set: that needs a model and read access to the product repos.
 
 ## Measuring the reviewer: evals
 
@@ -258,6 +263,21 @@ merge for that repo.
 bug a later PR had to fix, control PRs with no known defect, and PRs that touched
 an older defect without introducing it. Each case pins
 the base and head commits, so it is reviewed exactly as it was at the time.
+
+```bash
+scripts/eval-run.sh                    # every case: stage, review, grade
+scripts/eval-run.sh --jobs 3 <case-id> # some cases, 3 reviews at a time
+```
+
+`eval-run.sh` needs `gh` with read access to the repos in the cases and the
+`claude` CLI. Each review is a headless `claude -p` run that works from a copy of
+the skill without `cases.json`, in dry-run, so nothing is posted. It exits 0 when
+every case is `caught`, `clean` or `noted`, 1 when a case is not, and 2 when a
+case could not be staged or reviewed. `PRR_EVAL_MODEL` picks the model; use the
+one the Maestro trigger runs, or the result says little about production. A full
+run costs about one production review per case.
+
+The steps can also be run one at a time:
 
 ```bash
 scripts/eval-stage.sh --list           # the cases
@@ -274,6 +294,13 @@ and blocking it counts as a `false-block`. Run the set after changing `SKILL.md`
 checklist, and add a case whenever a bug gets past the bot: the fix PR names the
 PR that introduced it.
 
+A PR makes a good bug case only when the defect is in what that PR changed and a
+reviewer could have seen it from the diff, the Context Layer or the other side
+of a contract. A bug that only shows on a device, or a follow-up that widens a
+change the first PR scoped on purpose, is not one: the reviewer would fail it
+for a reason no review can fix, and the score stops meaning anything. A control
+should be a PR that has been in production for a while without a fix on top.
+
 The reviewer must not open `cases.json`; it holds the answers.
 
 ## Not built yet
@@ -283,4 +310,8 @@ The reviewer must not open `cases.json`; it holds the answers.
   deployed. It repeats the payload-only skip rules of `scripts/should-run.sh`,
   so a change to those rules (a new reviewed action, a new author rule) has to
   be made in both places.
-- Running the eval set automatically (today it is run by hand).
+- Running the eval set on a schedule. `eval-run.sh` runs it with one command,
+  but someone has to start it.
+- Telling anyone when a run fails before it posts. A script that fails means no
+  review and no message, so a broken script (as on 2026-11-11, when the
+  container's `gh` rejected a field) only shows as PRs without a review.
