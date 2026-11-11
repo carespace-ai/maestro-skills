@@ -57,10 +57,21 @@ Files land in `$PRR_DIR`. Read, in this order:
 1. `pr.json` + `linked-issues.md` — **what is this PR for?**
 2. `context-layer.md` — the repo's Context Layer (AGENTS.md nodes from the **base**
    branch): architecture, Integration Rules/Contracts, System Boundaries and
-   Key Invariants of the systems this PR touches. If `CONTEXT_NODES=0` the repo has
-   no Context Layer yet — review from the diff alone; never penalise the PR for it.
+   Key Invariants of the systems this PR touches. A node marked `— excerpt` was too
+   large to inline: you have its priority sections and outline, and its full text is
+   staged under `nodes/` — open the section the diff makes relevant instead of
+   guessing. `CONTEXT_STATUS=none` means the repo has no Context Layer yet — review
+   from the diff alone; never penalise the PR for it.
 3. `diff.patch` — the change. For >1500 diff lines, read the files that carry
    risk (migrations, auth, API handlers, shared contracts, config) and skim the rest.
+
+**Check `DIFF_STATUS` before judging anything:**
+- `ok` → carry on.
+- `partial` → GitHub omitted the patch of the files in `diff-unread.txt` (too large).
+  Read each one at the head commit (command below) before you decide; a file you
+  did not read is a file you did not review — say so in the review body.
+- `missing` → the diff could not be read at all. **Do not review from the title.**
+  Skip to STEP 4 with `VERDICT=UNREVIEWED`.
 
 Open a full source file at the head commit only when the diff alone can't tell you
 whether something breaks (`source "$S/_auth.sh"; gh api "repos/$REPO_FULL/contents/<path>?ref=$HEAD_SHA" -H 'Accept: application/vnd.github.raw'`).
@@ -107,6 +118,16 @@ Per-stack checklists (NestJS/Prisma, React, Flutter, Python/FastAPI) live in
   Layer rule when one is broken (e.g. ``AGENTS.md → "All runs execute in the arq
   worker"``). Add each blocker as an inline comment when its line is in the diff.
 
+- **`DIFF_STATUS=missing` → `UNREVIEWED`.** Body = one line saying you could not
+  read the diff and a human needs to look. Never an approve.
+
+`post-review.sh` enforces two gates on every `APPROVE`, whatever you decided:
+- **Unread diff** (`status.env` missing or `DIFF_STATUS=missing`) → posted as a COMMENT.
+- **CI on the head commit** — failing → posted as a COMMENT "not approving yet",
+  naming the red checks; still running → approved with a note. It prints
+  `APPROVE_HELD=ci|unread` when it held the approve. Don't work around either gate
+  and don't repeat the CI state in your own body — the script writes that line.
+
 ```bash
 # body → $PRR_DIR/review.md ; optional inline → $PRR_DIR/comments.json [{"path","line","body"}]
 SHADOW="$SHADOW" bash "$S/post-review.sh" "$REPO_FULL" "$PR_NUMBER" "$HEAD_SHA" "$VERDICT" \
@@ -117,7 +138,7 @@ Post **exactly one** review per run. Never post a separate comment as well.
 
 ## STEP 5 — Notify (blocks only)
 
-Only when `VERDICT=REQUEST_CHANGES` and `SHADOW=0`:
+When `VERDICT=REQUEST_CHANGES` and `SHADOW=0`:
 
 ```bash
 source "$HOME/.claude/skills/_pm-shared/context.sh"
@@ -127,6 +148,12 @@ slack_post "$SLACK_ENGINEERING" "🛑 PR blocked: $REPO_FULL#$PR_NUMBER" \
 ```
 Approvals are not announced — they're the normal case.
 
+When `VERDICT=UNREVIEWED` (or `APPROVE_HELD=unread`) and `SHADOW=0`, the PR has no
+reviewer at all, so say it once: same `slack_post`, title
+`👀 PR needs a human review: $REPO_FULL#$PR_NUMBER`, body = why the diff was
+unreadable. A held approve for failing CI (`APPROVE_HELD=ci`) is **not** announced —
+the author already sees the red check.
+
 ## Recheck mode (`MODE=recheck`)
 
 The bot blocked this PR earlier; the author pushed. `prior-blockers.md` has the
@@ -135,6 +162,12 @@ previous blockers. **One round only:**
 - Do **not** raise anything new — except a new blocker introduced *by the fix itself*.
 - All fixed → `APPROVE` ("Blockers from the previous review are resolved."). Any
   still present → `REQUEST_CHANGES` listing only the unresolved ones.
+
+## Re-review on request (`ACTION=rereview`)
+
+Someone with write access commented `/maestro review` — usually after re-running a
+red CI, or after an unreadable diff. The guard already routed it to `full` or
+`recheck`; just run that mode on the current head. Nothing special to say about it.
 
 ## Override mode (`MODE=override`)
 
@@ -148,6 +181,8 @@ bash "$S/dismiss-block.sh" "$REPO_FULL" "$PR_NUMBER" "$BOT_LOGIN" "$OVERRIDE_BY"
 ## Rules
 
 - Default is **APPROVE**. `REQUEST_CHANGES` is rare and always justified by a concrete break.
+- An approve means "I read this change and it is not red". A diff you could not read
+  is `UNREVIEWED`, never an approve.
 - One review per run, pinned to `HEAD_SHA`, always carrying the hidden marker
   (`post-review.sh` adds it). Never post reviews by hand with `gh pr review`.
 - In shadow mode (`SHADOW=1`) `post-review.sh` downgrades every verdict to COMMENT — don't work around it.
