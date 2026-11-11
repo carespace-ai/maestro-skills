@@ -17,6 +17,9 @@
 #   profile.md         the repo's review profile (repos/<repo>/review.md) + the
 #                      checklist of each stack the changed files belong to
 #   risk-files.txt     changed files on a risk path — read in full, never skimmed
+#   relations.md       cross-repo contracts this PR touches and what to verify
+#   cross/<repo>/      sparse copy of the other side of each touched contract
+#   linked-prs.md      PRs in other carespace repos that this PR's body points at
 #   status.env         DIFF_STATUS / CONTEXT_STATUS — post-review.sh refuses to
 #                      APPROVE a PR whose diff could not be read
 #   ci.txt             check status at fetch time (informational, often pending)
@@ -98,6 +101,34 @@ PROF="$(python3 "$HERE/resolve-profile.py" "$REPO" "$DIR/files.txt" "$DIR" 2>/de
   || { PROF=$'PROFILE=error\nSTACKS=\nRISK_FILES=0\nCI_IGNORE='; : > "$DIR/profile.md"; : > "$DIR/risk-files.txt"; }
 CI_IGNORE="$(echo "$PROF" | sed -n 's/^CI_IGNORE=//p')"
 
+# Cross-repo contracts — which edges of relations.json this PR touches, then a
+# sparse copy of the other side so the check is done against real code
+REL="$(python3 "$HERE/resolve-relations.py" "$REPO" "$DIR/files.txt" "$DIR" 2>/dev/null)" \
+  || { REL=$'RELATIONS=0\nRELATION_IDS='; : > "$DIR/relations.md"; : > "$DIR/cross.tsv"; }
+CROSS="$(bash "$HERE/fetch-cross.sh" "${REPO%%/*}" "$DIR" 2>/dev/null)" || CROSS="CROSS_STAGED=0"
+
+# Linked PRs — `owner/repo#N` or pull URLs in the body that point at another repo
+python3 - "$DIR/pr.json" "$REPO" > "$DIR/.linked.txt" <<'PY'
+import json, re, sys
+pr, repo = json.load(open(sys.argv[1])), sys.argv[2]
+owner = repo.split("/")[0]
+body = pr.get("body") or ""
+refs = re.findall(rf"\b{re.escape(owner)}/([\w.-]+)#(\d+)", body) + \
+       re.findall(rf"github\.com/{re.escape(owner)}/([\w.-]+)/pull/(\d+)", body)
+seen = []
+for r, n in refs:
+    if f"{owner}/{r}" != repo and (r, n) not in seen:
+        seen.append((r, n))
+print("\n".join(f"{owner}/{r} {n}" for r, n in seen[:5]))
+PY
+: > "$DIR/linked-prs.md"
+while read -r lrepo ln; do
+  [ -n "$lrepo" ] || continue
+  gh api "repos/$lrepo/pulls/$ln" \
+    --jq '"- \(.base.repo.full_name)#\(.number) — \(.title) — **\(if .merged then "merged" elif .state == "closed" then "closed" elif .draft then "draft" else "open" end)** (base `\(.base.ref)`)"' \
+    >> "$DIR/linked-prs.md" 2>/dev/null || echo "- $lrepo#$ln — could not be read" >> "$DIR/linked-prs.md"
+done < "$DIR/.linked.txt"
+
 printf 'DIFF_STATUS=%s\nDIFF_UNREAD=%s\nCONTEXT_STATUS=%s\nCI_IGNORE=%s\n' \
   "$DIFF_STATUS" "$DIFF_UNREAD" "$CONTEXT_STATUS" "$CI_IGNORE" > "$DIR/status.env"
 
@@ -118,5 +149,8 @@ echo "CONTEXT_STATUS=$CONTEXT_STATUS"
 echo "$ASM" | grep -E '^CONTEXT_NODES(_EXCERPTED)?='
 echo "CONTEXT_NODES_DROPPED=$NODES_DROPPED"
 echo "$PROF" | grep -E '^(PROFILE|STACKS|RISK_FILES)='
+echo "$REL"
+echo "$CROSS"
+echo "LINKED_PRS=$(grep -c '^- ' "$DIR/linked-prs.md")"
 echo "LINKED_ISSUES=$(grep -c '^## #' "$DIR/linked-issues.md")"
 echo "HAS_PRIOR_BLOCKERS=$([ -s "$DIR/prior-blockers.md" ] && echo 1 || echo 0)"
