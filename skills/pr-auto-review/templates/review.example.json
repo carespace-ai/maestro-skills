@@ -1,0 +1,18 @@
+{
+  "summary": "One or two sentences: what this PR does, as you understood it.",
+  "checked": [
+    {"area": "Short name of a rule, contract or risk this PR touches", "result": "What you verified and what you found, one sentence."}
+  ],
+  "cross_repo": [
+    {"repo": "carespace-admin", "result": "What you verified on the other side of the contract, with file:line when you cite code."}
+  ],
+  "heads_up": ["A real, non-blocking risk the author would want to know. Usually empty."],
+  "coverage": {"read": ["files or dirs read in full"], "skimmed": ["the rest, grouped"], "not_read": []},
+  "resolved": ["Recheck only: a blocker from the previous review that is now fixed."],
+  "blockers": [
+    {"title": "What breaks", "path": "src/file.ts", "line": 42,
+     "when": "Concrete scenario: when X, Y happens.", "fix": "Minimal change that unblocks.",
+     "rule": "Optional: AGENTS.md → \"quoted rule\""}
+  ],
+  "reason": "UNREVIEWED only: why the PR could not be reviewed."
+}

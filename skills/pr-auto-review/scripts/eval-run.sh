@@ -49,7 +49,7 @@ fi
 BLIND="$(mktemp -d)"; trap 'rm -rf "$BLIND"' EXIT
 mkdir -p "$BLIND/evals"
 cp -R "$SKILL/SKILL.md" "$SKILL/REFERENCE.md" "$SKILL/relations.json" \
-      "$SKILL/repos" "$SKILL/stacks" "$SKILL/scripts" "$BLIND/" || exit 2
+      "$SKILL/repos" "$SKILL/stacks" "$SKILL/scripts" "$SKILL/templates" "$BLIND/" || exit 2
 cp "$SKILL/evals/RUNNER.md" "$BLIND/evals/" || exit 2
 mkdir -p "$PRR_EVAL_HOME"
 

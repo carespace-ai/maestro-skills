@@ -22,6 +22,31 @@ This file explains how the skill works, for people. The reviewer itself reads
 
 The bot never edits, pushes to, merges, closes or relabels a PR.
 
+### What a review looks like
+
+Every review is laid out from a template in `templates/`, so the sections are
+always the same and in the same order. The reviewer writes its findings as JSON
+(`review.json`, shape in `templates/review.example.json`) and
+`scripts/render-review.py` builds the body; `post-review.sh` refuses a
+hand-written body, and findings that do not fit the template post nothing.
+
+| Section | Approve | Changes requested | Filled by |
+|---------|---------|-------------------|-----------|
+| Heading (`✅ No blockers found` / `🛑 Changes requested — N blocker(s)`) | yes | yes | script |
+| What this PR does | yes | yes | reviewer |
+| Blockers (what breaks, where, when, fix, rule) | — | yes | reviewer |
+| Resolved since the last review | recheck | recheck | reviewer |
+| What I checked (1–8 rules, contracts or risks, each with the result) | yes | — | reviewer |
+| Cross-repo contracts | when a contract is touched | same | reviewer |
+| ⚠️ Heads-up | rare | rare | reviewer |
+| Coverage (read in full / skimmed / not read) | required above 1500 diff lines | optional | reviewer |
+| Footer (commit, scope, size, profile, contracts) | yes | yes | script, from the staged files |
+
+Empty sections are left out. Inline comments are generated from the blockers
+that carry a line. A review that could not read the diff uses the third
+template, `⏸️ Not reviewed`. The gate notes (CI red, human approve needed) are
+still added by `post-review.sh` around the rendered body.
+
 ### What counts as a blocker
 
 A finding blocks only if all three hold:
@@ -243,7 +268,9 @@ merge for that repo.
 | `SKILL.md` | The reviewer's instructions |
 | `REFERENCE.md` | One-time setup, approve gates, tuning, local dry-run |
 | `repos/`, `stacks/`, `relations.json` | Per-repo profiles, stack checklists, contracts |
-| `templates/request-changes.template.md` | Body of a blocking review |
+| `templates/*.template.md` | Layout of the three review bodies: approve, changes requested, not reviewed |
+| `templates/review.example.json` | Shape of the findings the reviewer writes |
+| `scripts/render-review.py` | Builds the review body from the findings and a template |
 | `scripts/should-run.sh` | Guard: RUN or SKIP, and the mode |
 | `scripts/fetch-context.sh` | Stages the PR, Context Layer, profile and relations |
 | `scripts/fetch-cross.sh` | Stages the other repo's side of a contract |

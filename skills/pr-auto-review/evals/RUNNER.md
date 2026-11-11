@@ -14,8 +14,7 @@ payload instead of calling GitHub.
    ```bash
    source "<RUN_ENV>"
    bash "$S/post-review.sh" "$REPO_FULL" "$PR_NUMBER" "$HEAD_SHA" <VERDICT> \
-     "$PRR_DIR/review.md" "$( [ -s "$PRR_DIR/comments.json" ] && echo "$PRR_DIR/comments.json" )" \
-     > "$PRR_DIR/payload.json"
+     "$PRR_DIR/review.json" > "$PRR_DIR/payload.json"
    ```
 4. Skip STEP 5. Stop.
 
