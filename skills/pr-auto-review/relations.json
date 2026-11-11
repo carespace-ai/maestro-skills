@@ -1,0 +1,71 @@
+{
+  "_doc": "Contracts between carespace-ai repos. One edge = one surface a provider exposes and a consumer depends on. See repos/README.md > Relations.",
+  "edges": [
+    {
+      "id": "agent-protocol",
+      "provider": "carespace-agent",
+      "consumer": "carespace-mobile",
+      "coupling": "immediate",
+      "surface": "Assistant HTTP + SSE protocol: /v1/threads routes, SSE event types (run.started, text.delta, detail.delta, tool.progress, card, action.proposal, action.result, app.open), display-card schema, /v1/speech/token and the /v1/voice/live WebSocket",
+      "provider_paths": ["src/carespace_agent/api/**", "src/carespace_agent/sse.py", "src/carespace_agent/cards.py", "src/carespace_agent/runs.py", "src/carespace_agent/run_feed.py", "src/carespace_agent/voice_live.py", "src/carespace_agent/speech.py"],
+      "consumer_paths": ["lib/data/api/agent_api.dart", "lib/data/api/voice_live_api.dart", "lib/features/assistant/**", "lib/features/admin/domain/admin_agent.dart", "lib/features/admin/application/admin_voice_controller.dart", "lib/shared/voice/**"]
+    },
+    {
+      "id": "sdk-packages",
+      "provider": "carespace-sdk",
+      "consumer": "carespace-mobile",
+      "coupling": "deferred",
+      "surface": "Public Dart API of carespace_sdk (packages/flutter) and carespace_scan (packages/scan), consumed as git dependencies pinned to release tags and moved only by sdk-bump.yml",
+      "provider_paths": ["packages/flutter/lib/**", "packages/scan/lib/**"],
+      "consumer_paths": ["lib/bootstrap.dart", "lib/data/**", "lib/features/**", "lib/shared/**", "pubspec.yaml"]
+    },
+    {
+      "id": "admin-rest-mobile",
+      "provider": "carespace-admin",
+      "consumer": "carespace-mobile",
+      "coupling": "immediate",
+      "surface": "CareSpace REST API /v1 (raw bodies) and /v2 (envelope): routes, request and response shapes, auth headers",
+      "provider_paths": ["openapi.json", "src/**/*.controller.ts", "src/**/*.dto.ts", "prisma/schema.prisma"],
+      "provider_stage": ["openapi.json"],
+      "consumer_paths": ["lib/data/api/**", "lib/data/repositories/**"]
+    },
+    {
+      "id": "admin-rest-agent",
+      "provider": "carespace-admin",
+      "consumer": "carespace-agent",
+      "coupling": "immediate",
+      "surface": "CareSpace REST API operations the agent may call, generated into catalog/operations.json from carespace-admin's openapi.json",
+      "provider_paths": ["openapi.json", "src/**/*.controller.ts", "src/**/*.dto.ts"],
+      "provider_stage": ["openapi.json"],
+      "consumer_paths": ["src/carespace_agent/catalog/**", "src/carespace_agent/backend/**", "src/carespace_agent/tools/**"]
+    },
+    {
+      "id": "admin-rest-sdk",
+      "provider": "carespace-admin",
+      "consumer": "carespace-sdk",
+      "coupling": "immediate",
+      "surface": "CareSpace REST API used by the SDK service clients (auth/sign-in, rom/sessions, posture-analytics, plans, survey, evaluation, activity-stream, lets-move) and the scan queue's ROM-session upload contract",
+      "provider_paths": ["openapi.json", "src/**/*.controller.ts", "src/**/*.dto.ts"],
+      "provider_stage": ["openapi.json"],
+      "consumer_paths": ["packages/flutter/lib/src/services/**", "packages/scan_queue/lib/src/data/**"]
+    },
+    {
+      "id": "widgetbook-ui",
+      "provider": "carespace-widgetbook",
+      "consumer": "carespace-mobile",
+      "coupling": "immediate",
+      "surface": "Design-system widgets and tokens of carespace_widgetbook, consumed as a path dependency; carespace-mobile's CI builds against widgetbook's default branch",
+      "provider_paths": ["lib/**", "tokens/**", "pubspec.yaml"],
+      "consumer_paths": ["lib/**"]
+    },
+    {
+      "id": "strapi-content-agent",
+      "provider": "carespace-strapi",
+      "consumer": "carespace-agent",
+      "coupling": "immediate",
+      "surface": "Strapi collections the agent reads (GET only, fixed collection paths)",
+      "provider_paths": ["src/api/**"],
+      "consumer_paths": ["src/carespace_agent/content/**"]
+    }
+  ]
+}

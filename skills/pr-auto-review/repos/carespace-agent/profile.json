@@ -1,0 +1,21 @@
+{
+  "repo": "carespace-agent",
+  "default_branch": "main",
+  "stacks": {
+    "python": ["src/**", "tests/**", "tool/**", "pyproject.toml"],
+    "infra": [".github/**", "infra/**", "Dockerfile*"]
+  },
+  "risk_paths": [
+    {"glob": "src/carespace_agent/auth/**", "why": "JWT verification and the role rule"},
+    {"glob": "src/carespace_agent/scope.py", "why": "caseload scope guard (which patients a caller may touch)"},
+    {"glob": "src/carespace_agent/actions.py", "why": "pending actions and the confirmation rule for writes"},
+    {"glob": "src/carespace_agent/backend/**", "why": "caller-credential client to carespace-admin"},
+    {"glob": "src/carespace_agent/catalog/**", "why": "operation allowlists per role"},
+    {"glob": "src/carespace_agent/sse.py", "why": "SSE protocol consumed by carespace-mobile"},
+    {"glob": "src/carespace_agent/cards.py", "why": "display-card schema consumed by carespace-mobile"},
+    {"glob": "src/carespace_agent/observability/**", "why": "PHI redaction in logs and telemetry"},
+    {"glob": "infra/**", "why": "Azure deployment (DEV and prod parameters)"},
+    {"glob": ".github/workflows/**", "why": "CI and deploy pipeline"}
+  ],
+  "ci_ignore": ""
+}

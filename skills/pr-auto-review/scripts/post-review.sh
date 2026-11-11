@@ -21,7 +21,8 @@
 #     seconds, default 60, for running checks). Failing → COMMENT "not approving
 #     yet" (re-trigger: push, or comment `/maestro review` once CI is green).
 #     Still running → APPROVE with a note that the checks were not finished.
-#     PRR_CI_IGNORE = regex of check names that never count. PRR_CI_FILE = test seam.
+#     Check names matching the repo profile's `ci_ignore` regex (status.env
+#     CI_IGNORE; env PRR_CI_IGNORE overrides) never count. PRR_CI_FILE = test seam.
 #
 # SHADOW=1 (or PRR_SHADOW=1) downgrades the event to COMMENT — shadow-mode rollout.
 # PRR_DRY_RUN=1 prints the payload instead of calling GitHub (tests).
@@ -42,6 +43,7 @@ HOLD=""; NOTE=""; CI_STATE=skipped
 if [ "$VERDICT" = APPROVE ]; then
   STATUS_FILE="${PRR_DIR:-$(dirname "$BODY_FILE")}/status.env"
   DIFF_STATUS="$(sed -n 's/^DIFF_STATUS=//p' "$STATUS_FILE" 2>/dev/null | head -1)"
+  [ -n "${PRR_CI_IGNORE:-}" ] || export PRR_CI_IGNORE="$(sed -n 's/^CI_IGNORE=//p' "$STATUS_FILE" 2>/dev/null | head -1)"
   case "$DIFF_STATUS" in
     ok|partial) ;;
     *) HOLD="unread"
