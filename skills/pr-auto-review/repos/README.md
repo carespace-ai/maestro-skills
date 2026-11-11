@@ -48,8 +48,12 @@ not, the review says the contract was not verified and carries on.
 
 ## Add a repo
 
-1. `cp -r _template <repo-name>` and fill both files (`review.md` from the repo's
-   `AGENTS.md` hard rules / integration contracts and its recent incident history).
+1. `bash ../scripts/onboard-repo.sh carespace-ai/<repo-name>` — generates
+   `<repo-name>/profile.json` from the repo's file tree, drops the `review.md`
+   template and an `ONBOARDING.md` to-do list quoting the repo's own rules, and
+   prints `READY_*` lines for everything enrolment needs (Context Layer, webhook,
+   ruleset, override label). Work through `ONBOARDING.md`, then delete it.
+   (By hand: `cp -r _template <repo-name>` and fill both files.)
 2. Add its contracts to `../relations.json` — one edge per repo it calls and per
    repo that calls it. Take them from the "App Integration" table of its
    `AGENTS.md`, then **check each path exists on both sides**.

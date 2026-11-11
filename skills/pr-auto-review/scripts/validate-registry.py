@@ -99,6 +99,8 @@ def check(repo, stacks):
                 errs.append(f"review.md lacks the section {s!r}")
         if "{{" in text:
             errs.append("review.md still has {{placeholders}} from the template")
+    if os.path.exists(os.path.join(REPOS, repo, "ONBOARDING.md")):
+        errs.append("ONBOARDING.md is still there — finish the onboarding to-do list and delete it")
     return errs
 
 
