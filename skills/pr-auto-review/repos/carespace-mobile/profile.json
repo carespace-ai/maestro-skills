@@ -1,0 +1,21 @@
+{
+  "repo": "carespace-mobile",
+  "default_branch": "main",
+  "stacks": {
+    "flutter": ["lib/**", "test/**", "integration_test/**", "tool/**", "pubspec.yaml", "pubspec.lock", "android/**", "ios/**", "assets/**", "shaders/**"],
+    "infra": [".github/**", ".githooks/**"]
+  },
+  "risk_paths": [
+    {"glob": "lib/data/auth/**", "why": "sign-in, token storage and refresh"},
+    {"glob": "lib/data/api/**", "why": "REST contract with carespace-admin (request / response shapes)"},
+    {"glob": "lib/data/local/**", "why": "on-device persistence of PHI"},
+    {"glob": "lib/data/workers/**", "why": "background upload of scan data"},
+    {"glob": "lib/core/**", "why": "app-wide config, environment and logging"},
+    {"glob": "lib/routing/**", "why": "route table and deep links"},
+    {"glob": "pubspec.yaml", "why": "dependency pins (carespace_sdk / carespace_scan tags, widgetbook path)"},
+    {"glob": "android/app/src/main/AndroidManifest.xml", "why": "permissions and intent filters"},
+    {"glob": "ios/Runner/Info.plist", "why": "permissions and URL schemes"},
+    {"glob": ".github/workflows/**", "why": "CI, release and store pipelines"}
+  ],
+  "ci_ignore": ""
+}

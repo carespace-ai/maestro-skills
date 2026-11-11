@@ -62,8 +62,14 @@ Files land in `$PRR_DIR`. Read, in this order:
    staged under `nodes/` — open the section the diff makes relevant instead of
    guessing. `CONTEXT_STATUS=none` means the repo has no Context Layer yet — review
    from the diff alone; never penalise the PR for it.
-3. `diff.patch` — the change. For >1500 diff lines, read the files that carry
-   risk (migrations, auth, API handlers, shared contracts, config) and skim the rest.
+3. `profile.md` — how **this repo** breaks and what is not worth flagging here,
+   plus the blocker checklist of each stack this PR touches. It sharpens STEP 3; it
+   never lowers the three-part bar. `PROFILE=default` means the repo has no profile
+   yet and you got generic checklists.
+4. `diff.patch` — the change. Every file listed in `risk-files.txt` (and under
+   "Risk files in this PR" in `profile.md`) is read **in full, whatever the size of
+   the PR**. Beyond those, for >1500 diff lines read what carries risk (migrations,
+   auth, API handlers, shared contracts, config) and skim the rest.
 
 **Check `DIFF_STATUS` before judging anything:**
 - `ok` → carry on.
@@ -104,8 +110,8 @@ A finding is a **blocker** only if ALL three hold:
 unlikely edge cases, convention drift described in AGENTS.md, anything CI linters
 already enforce. No "nits", no "consider", no praise lists.
 
-Per-stack checklists (NestJS/Prisma, React, Flutter, Python/FastAPI) live in
-`REFERENCE.md` — read it only when the diff touches that stack's risky areas.
+The repo's "What breaks here" list and the stack checklists in `profile.md` are
+where to look first; "Not a blocker here" is binding — do not raise those.
 
 ## STEP 4 — Decide + post one review
 
