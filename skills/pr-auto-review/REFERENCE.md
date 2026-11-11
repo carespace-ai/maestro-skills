@@ -28,15 +28,19 @@ PR needs into `$PRR_DIR/profile.md` — you never read `stacks/` or `repos/` dir
    events **Pull requests** + **Issue comments** only. The token URL is the only auth on
    this endpoint (no HMAC) — treat it as a secret.
 4. **Label** `maestro:override` in each repo (optional; `/maestro approve` works without it).
+   Like the comment, the label only counts when the person adding it has write access.
 
 # Approve gates and tuning
 
-`post-review.sh` never posts an `APPROVE` for a PR that was not read or is red:
+`post-review.sh` never posts an `APPROVE` for a PR that was not read, is red,
+touches a human-only path, or moved under the reviewer:
 
 | Situation | What is posted | Way back |
 |-----------|----------------|----------|
 | `status.env` absent or `DIFF_STATUS=missing` | COMMENT — "could not read this PR's diff" | `/maestro review`, or a human review |
 | CI failing on the head commit | COMMENT — "not approving yet", red checks named | push a fix, or re-run CI + `/maestro review` |
+| PR changes a `human_paths` file (or the profile could not be resolved) | COMMENT — the review, plus "a human approve is needed" | a human approve |
+| PR head is no longer the commit under review | nothing | the newer push's run reviews it |
 | CI still running after `PRR_CI_WAIT` s | APPROVE + "CI was still running" note | — |
 | CI unreadable (API error) | APPROVE + "could not read CI" note | — |
 

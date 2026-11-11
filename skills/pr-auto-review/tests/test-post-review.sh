@@ -4,7 +4,7 @@ set -uo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 T="$(mktemp -d)"; echo "Adds the billing export endpoint." > "$T/body.md"
 echo '[{"path":"src/a.ts","line":"12","body":"crash when user is null"}]' > "$T/c.json"
-echo "DIFF_STATUS=ok" > "$T/status.env"   # fetch-context.sh staged the diff
+printf 'DIFF_STATUS=ok\nHUMAN_FILES=0\n' > "$T/status.env"   # fetch-context.sh staged the diff
 SHA=abc123
 field() { python3 -c 'import json,sys; v=json.load(sys.stdin); [v:=v[k] if not k.isdigit() else v[int(k)] for k in sys.argv[1].split(".")]; print(v)' "$1"; }
 
@@ -31,7 +31,7 @@ P="$(PRR_DRY_RUN=1 bash "$SCRIPTS/post-review.sh" o/r 1 $SHA APPROVE "$U/body.md
 [ "$(echo "$P" | field event)" = COMMENT ] || fail "missing diff must not approve"; pass "unread diff → COMMENT"
 echo "$P" | field body | grep -q "could not read this PR's diff" || fail "unread note"; pass "unread diff says so"
 echo "$P" | field body | grep -q "verdict=APPROVE held=unread" || fail "unread marker"; pass "unread marker"
-echo "DIFF_STATUS=partial" > "$U/status.env"
+printf 'DIFF_STATUS=partial\nHUMAN_FILES=0\n' > "$U/status.env"
 P="$(PRR_DRY_RUN=1 bash "$SCRIPTS/post-review.sh" o/r 1 $SHA APPROVE "$U/body.md")"
 [ "$(echo "$P" | field event)" = APPROVE ] || fail "partial diff may approve"; pass "partial diff → APPROVE"
 echo "DIFF_STATUS=missing" > "$U/status.env"
@@ -54,4 +54,29 @@ P="$(PRR_CI_IGNORE='^preview' ci '{"check_runs":[{"name":"preview deploy","statu
 [ "$(echo "$P" | field event)" = APPROVE ] || fail "ignored check must not hold"; pass "PRR_CI_IGNORE"
 P="$(ci '{"check_runs":[{"name":"old","status":"completed","conclusion":"cancelled"}],"statuses":[{"context":"deploy","state":"error"}]}')"
 [ "$(echo "$P" | field event)" = COMMENT ] || fail "commit status error must hold"; pass "legacy status error → COMMENT"
+
+# ── Human-only paths: the bot's findings go out, the approve does not
+H="$(mktemp -d)"; cp "$T/body.md" "$H/body.md"
+printf 'DIFF_STATUS=ok\nHUMAN_FILES=2\n' > "$H/status.env"
+printf '.github/workflows/ci.yml\n.github/workflows/release.yml\n' > "$H/human-files.txt"
+P="$(PRR_DRY_RUN=1 bash "$SCRIPTS/post-review.sh" o/r 1 $SHA APPROVE "$H/body.md")"
+[ "$(echo "$P" | field event)" = COMMENT ] || fail "human path must not approve"; pass "human path → COMMENT"
+echo "$P" | field body | grep -q 'Needs a human approve.*`.github/workflows/ci.yml`, `.github/workflows/release.yml`' || fail "human note lists files"; pass "human note lists the files"
+echo "$P" | field body | grep -q "verdict=APPROVE held=human" || fail "human marker"; pass "human marker"
+P="$(PRR_DRY_RUN=1 bash "$SCRIPTS/post-review.sh" o/r 1 $SHA REQUEST_CHANGES "$H/body.md")"
+[ "$(echo "$P" | field event)" = REQUEST_CHANGES ] || fail "human path never softens a block"; pass "human path: block still blocks"
+echo "DIFF_STATUS=ok" > "$H/status.env"
+P="$(PRR_DRY_RUN=1 bash "$SCRIPTS/post-review.sh" o/r 1 $SHA APPROVE "$H/body.md")"
+[ "$(echo "$P" | field event)" = COMMENT ] || fail "unknown HUMAN_FILES must hold"; pass "HUMAN_FILES unknown → COMMENT (fails closed)"
+
+# ── Head moved: nothing is posted, for any verdict
+for v in APPROVE REQUEST_CHANGES; do
+  OUT="$(PRR_HEAD_NOW=def456 PRR_DRY_RUN=1 bash "$SCRIPTS/post-review.sh" o/r 1 $SHA $v "$T/body.md")"
+  echo "$OUT" | grep -q '^REVIEW_SKIPPED=head-moved$' && ! echo "$OUT" | grep -q commit_id || fail "moved head must post nothing ($v)"
+done; pass "head moved during review → nothing posted"
+OUT="$(PRR_HEAD_NOW=$SHA PRR_DRY_RUN=1 bash "$SCRIPTS/post-review.sh" o/r 1 $SHA APPROVE "$T/body.md")"
+[ "$(echo "$OUT" | field event)" = APPROVE ] || fail "same head posts"; pass "head unchanged → posts"
+M="$(mktemp -d)"; cp "$T/body.md" "$M/body.md"; printf 'DIFF_STATUS=missing\nHEAD_MOVED=1\n' > "$M/status.env"
+OUT="$(PRR_DRY_RUN=1 bash "$SCRIPTS/post-review.sh" o/r 1 $SHA UNREVIEWED "$M/body.md")"
+echo "$OUT" | grep -q '^REVIEW_SKIPPED=head-moved$' || fail "HEAD_MOVED in status.env must post nothing"; pass "head moved before staging → nothing posted"
 echo "ALL PASS"

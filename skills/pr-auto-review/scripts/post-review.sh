@@ -14,9 +14,20 @@
 # that should-run.sh uses to drop duplicate deliveries — never post a review without it.
 # The review is pinned to HEAD_SHA (commit_id) so it can't land on a newer, unreviewed push.
 #
+# Nothing at all is posted when the PR head is no longer HEAD_SHA (status.env
+# HEAD_MOVED=1 from fetch-context.sh, or a push that landed while the review was
+# being written): an approve on an old commit still counts toward branch
+# protection where stale approvals are not dismissed. Prints
+# REVIEW_SKIPPED=head-moved; the run of the newer push reviews the PR.
+# PRR_HEAD_NOW = test seam.
+#
 # An APPROVE is only ever posted for a PR that was actually read and is not red:
 #   - status.env (written by fetch-context.sh next to BODY_FILE) must say the diff
 #     was staged; DIFF_STATUS=missing, or no status.env at all → COMMENT, not approve
+#   - a PR that changes a file on the repo profile's `human_paths` (status.env
+#     HUMAN_FILES, list in human-files.txt) is never approved by the bot: the
+#     findings go out as a COMMENT asking for a human approve. HUMAN_FILES absent
+#     or "unknown" holds too — the gate fails closed.
 #   - CI on HEAD_SHA is checked right before posting (waits up to PRR_CI_WAIT
 #     seconds, default 60, for running checks). Failing → COMMENT "not approving
 #     yet" (re-trigger: push, or comment `/maestro review` once CI is green).
@@ -38,10 +49,21 @@ SHADOW="${SHADOW:-${PRR_SHADOW:-0}}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TMP="$(mktemp -d)"
 
+# ── Head moved — the review would land on a commit that is no longer the PR ──
+STAGE="${PRR_DIR:-$(dirname "$BODY_FILE")}"
+HEAD_NOW="${PRR_HEAD_NOW:-}"
+if [ -z "$HEAD_NOW" ] && [ "${PRR_DRY_RUN:-0}" != "1" ]; then
+  HEAD_NOW="$(gh api "repos/$REPO/pulls/$PR" --jq '.head.sha' 2>/dev/null)"
+fi
+if grep -q '^HEAD_MOVED=1$' "$STAGE/status.env" 2>/dev/null || { [ -n "$HEAD_NOW" ] && [ "$HEAD_NOW" != "$SHA" ]; }; then
+  echo "REVIEW_SKIPPED=head-moved"; echo "HEAD_NOW=${HEAD_NOW:-unknown}"
+  exit 0
+fi
+
 # ── Approve gates — decide HOLD (why an APPROVE must not be posted) and NOTE ──
 HOLD=""; NOTE=""; CI_STATE=skipped
 if [ "$VERDICT" = APPROVE ]; then
-  STATUS_FILE="${PRR_DIR:-$(dirname "$BODY_FILE")}/status.env"
+  STATUS_FILE="$STAGE/status.env"
   DIFF_STATUS="$(sed -n 's/^DIFF_STATUS=//p' "$STATUS_FILE" 2>/dev/null | head -1)"
   [ -n "${PRR_CI_IGNORE:-}" ] || export PRR_CI_IGNORE="$(sed -n 's/^CI_IGNORE=//p' "$STATUS_FILE" 2>/dev/null | head -1)"
   case "$DIFF_STATUS" in
@@ -49,6 +71,15 @@ if [ "$VERDICT" = APPROVE ]; then
     *) HOLD="unread"
        NOTE="⏸️ **Not approved — I could not read this PR's diff** (\`DIFF_STATUS=${DIFF_STATUS:-unknown}\`), so nothing below is a review of the change. A human needs to review this one, or comment \`/maestro review\` to make me try again." ;;
   esac
+  HUMAN_FILES="$(sed -n 's/^HUMAN_FILES=//p' "$STATUS_FILE" 2>/dev/null | head -1)"
+  if [ -z "$HOLD" ] && [ "$HUMAN_FILES" != "0" ]; then
+    HOLD="human"
+    HUMAN_LIST="$(head -8 "$STAGE/human-files.txt" 2>/dev/null | sed 's/`//g; s/.*/`&`/' | paste -sd, - | sed 's/,/, /g')"
+    case "$HUMAN_FILES" in
+      ''|unknown) NOTE="⏸️ **Needs a human approve** — I could not work out whether this PR touches files that need one, so I am not approving it myself. The code review below found no blockers." ;;
+      *) NOTE="⏸️ **Needs a human approve** — this PR changes ${HUMAN_FILES} file(s) I never approve on my own: ${HUMAN_LIST}$([ "$HUMAN_FILES" -gt 8 ] 2>/dev/null && echo ', …'). The code review below found no blockers; a person with write access has to approve this one." ;;
+    esac
+  fi
 fi
 if [ "$VERDICT" = APPROVE ] && [ -z "$HOLD" ] && { [ "${PRR_DRY_RUN:-0}" != "1" ] || [ -n "${PRR_CI_FILE:-}" ]; }; then
   ci_fetch() {  # → $TMP/ci.json ; non-zero if GitHub could not be read

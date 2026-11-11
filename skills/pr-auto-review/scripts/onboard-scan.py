@@ -58,7 +58,8 @@ def related_repos(agents_text, repo, owner_prefix="carespace-"):
 def build(repo, branch, tree, agents_text):
     tree = [p for p in tree if not IGNORED.search(p)]
     profile = {"repo": repo, "default_branch": branch, "stacks": detect_stacks(tree),
-               "risk_paths": detect_risk(tree), "ci_ignore": ""}
+               "risk_paths": detect_risk(tree),
+               "human_paths": [".github/workflows/**"], "ci_ignore": ""}
     nodes = sum(1 for p in tree if os.path.basename(p) == "AGENTS.md")
     related = related_repos(agents_text, repo)
     source = "\n".join(ctx.priority_sections(agents_text)) if agents_text else ""

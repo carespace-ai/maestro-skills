@@ -14,5 +14,6 @@
     {"glob": "**/*logger*", "why": "PHI redaction in SDK logging"},
     {"glob": ".github/workflows/**", "why": "release, tagging and the dispatch that bumps carespace-mobile"}
   ],
+  "human_paths": [".github/workflows/**"],
   "ci_ignore": ""
 }

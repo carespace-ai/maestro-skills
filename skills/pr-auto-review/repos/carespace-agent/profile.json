@@ -17,5 +17,6 @@
     {"glob": "infra/**", "why": "Azure deployment (DEV and prod parameters)"},
     {"glob": ".github/workflows/**", "why": "CI and deploy pipeline"}
   ],
+  "human_paths": [".github/workflows/**"],
   "ci_ignore": ""
 }

@@ -8,6 +8,9 @@ as if it had been reviewed.
 
 Usage: diff-fallback.py <files.json> <diff.patch> <unread.txt> [changed-files-count]
        diff-fallback.py --names <files.json>      (just print the changed paths)
+       diff-fallback.py --only <files.txt> <in.diff> <out.diff>
+                                                  (keep only the file sections of a
+                                                  unified diff whose path is listed)
 
   files.json   output of `gh api --paginate repos/R/pulls/N/files` (one array,
                several concatenated arrays, or one object per line — all accepted)
@@ -20,6 +23,7 @@ Prints DIFF_STATUS=ok|partial|missing and DIFF_UNREAD=<n>:
   missing  nothing readable at all — the PR cannot be reviewed
 """
 import json
+import re
 import sys
 
 
@@ -57,6 +61,19 @@ if __name__ == "__main__":
             print("\n".join(f["filename"] for f in load(sys.argv[2])))
         except Exception:
             pass
+        sys.exit(0)
+    if len(sys.argv) == 5 and sys.argv[1] == "--only":
+        with open(sys.argv[2]) as fh:
+            keep = {l.strip() for l in fh if l.strip()}
+        with open(sys.argv[3], encoding="utf-8", errors="replace") as fh:
+            raw = fh.read()
+        out = []
+        for part in re.split(r"(?m)^(?=diff --git )", raw):
+            m = re.match(r"diff --git a/(.*?) b/(.*)\n", part)
+            if m and (m.group(1) in keep or m.group(2) in keep):
+                out.append(part)
+        with open(sys.argv[4], "w", encoding="utf-8") as fh:
+            fh.write("".join(out))
         sys.exit(0)
     if len(sys.argv) not in (4, 5):
         sys.exit(__doc__)

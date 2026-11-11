@@ -50,4 +50,11 @@ OUT="$(fb '[{"filename":"a.dart","changes":2,"patch":"@@"}][{"filename":"b.dart"
 OUT="$(fb '[{"filename":"a.dart","changes":2,"patch":"@@"}]' 5)"
 [ "$(kv "$OUT" DIFF_STATUS)" = partial ] || fail "fewer files listed than changed → partial (got: $OUT)"; pass "short file list → partial"
 [ "$(python3 "$SCRIPTS/diff-fallback.py" --names "$T/files.json")" = a.dart ] || fail "--names"; pass "--names lists changed paths"
+
+# --only: the incremental diff keeps this PR's files and drops what a merge of main brought in
+printf 'diff --git a/lib/a.dart b/lib/a.dart\n--- a/lib/a.dart\n+++ b/lib/a.dart\n@@ -1 +1 @@\n-x\n+MINE\ndiff --git a/other/z.dart b/other/z.dart\n--- a/other/z.dart\n+++ b/other/z.dart\n@@ -1 +1 @@\n-x\n+FROM-MAIN\ndiff --git a/old.dart b/lib/renamed.dart\nsimilarity index 90%%\n@@ -1 +1 @@\n-x\n+RENAMED\n' > "$T/inc.raw"
+printf 'lib/a.dart\nlib/renamed.dart\n' > "$T/only.txt"
+python3 "$SCRIPTS/diff-fallback.py" --only "$T/only.txt" "$T/inc.raw" "$T/inc.patch" || fail "--only exit"
+grep -q MINE "$T/inc.patch" && grep -q RENAMED "$T/inc.patch" || fail "--only dropped a PR file"; pass "--only keeps the PR's files (renames too)"
+grep -q FROM-MAIN "$T/inc.patch" && fail "--only kept a file outside the PR"; pass "--only drops files outside the PR"
 echo "ALL PASS"

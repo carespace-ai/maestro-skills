@@ -24,6 +24,7 @@ rules it is reviewed by. Architecture and conventions stay in the repo's own
 | `default_branch` | branch PRs target |
 | `stacks` | `{stack: [globs]}` — a stack's checklist (`../stacks/<stack>.md`) is loaded when a changed file matches one of its globs |
 | `risk_paths` | `[{glob, why}]` — a changed file matching one is listed for the reviewer to read in full, however large the PR |
+| `human_paths` | `[glob]` — a PR that changes a matching file is never approved by the bot: it posts its findings as a comment and asks for a human approve. Keep it short (every entry reintroduces waiting); `[]` opts out |
 | `ci_ignore` | regex of check names that must never hold an approve (flaky or advisory jobs); empty = every check counts |
 
 Globs: `**` crosses directories, `*` and `?` stay inside one path segment.

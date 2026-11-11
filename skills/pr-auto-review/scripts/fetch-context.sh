@@ -4,6 +4,11 @@
 #
 # Usage: fetch-context.sh <REPO_FULL> <PR_NUMBER> <BASE_SHA> [BOT_LOGIN]
 #
+# $HEAD_SHA (from the guard's run env) is the commit this run reviews. If the PR
+# head has already moved past it, nothing is staged for review: HEAD_MOVED=1 is
+# printed and written to status.env, and post-review.sh then posts nothing — the
+# run of the newer push reviews the PR.
+#
 # Writes to $PRR_DIR (default /tmp/prr-<repo>-<pr>/):
 #   pr.json            title, body, author, labels, size, head sha
 #   linked-issues.md   bodies of the issues the PR closes (the PR's purpose)
@@ -17,13 +22,18 @@
 #   profile.md         the repo's review profile (repos/<repo>/review.md) + the
 #                      checklist of each stack the changed files belong to
 #   risk-files.txt     changed files on a risk path — read in full, never skimmed
+#   human-files.txt    changed files the bot never approves on its own (human_paths)
 #   relations.md       cross-repo contracts this PR touches and what to verify
 #   cross/<repo>/      sparse copy of the other side of each touched contract
 #   linked-prs.md      PRs in other carespace repos that this PR's body points at
-#   status.env         DIFF_STATUS / CONTEXT_STATUS — post-review.sh refuses to
-#                      APPROVE a PR whose diff could not be read
+#   status.env         DIFF_STATUS / CONTEXT_STATUS / HUMAN_FILES / HEAD_MOVED —
+#                      post-review.sh refuses to APPROVE a PR whose diff could
+#                      not be read or that touches a human-only path
 #   ci.txt             check status at fetch time (informational, often pending)
 #   prior-blockers.md  body of the bot's latest CHANGES_REQUESTED review (if any)
+#   incremental.patch  what changed since the commit that review was posted on,
+#                      limited to this PR's files (recheck mode reads it so new
+#                      code pushed after a block is not approved unread)
 #
 # The Context Layer is read from the BASE sha on purpose: a PR must not be able
 # to rewrite the reviewer's instructions by editing AGENTS.md in its own diff.
@@ -43,6 +53,15 @@ printf 'DIFF_STATUS=missing\nCONTEXT_STATUS=error\n' > "$DIR/status.env"
 gh pr view "$PR" --repo "$REPO" \
   --json number,title,body,author,labels,additions,deletions,changedFiles,headRefOid,baseRefName,closingIssuesReferences \
   > "$DIR/pr.json" || { echo "ERROR=cannot read PR $REPO#$PR"; exit 1; }
+
+# `gh pr diff` below serves the CURRENT head; the review is pinned to $HEAD_SHA.
+# If they differ, the diff would not be the commit being reviewed — stand down.
+HEAD_NOW="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("headRefOid",""))' "$DIR/pr.json" 2>/dev/null)"
+if [ -n "${HEAD_SHA:-}" ] && [ -n "$HEAD_NOW" ] && [ "$HEAD_NOW" != "$HEAD_SHA" ]; then
+  printf 'DIFF_STATUS=missing\nCONTEXT_STATUS=error\nHEAD_MOVED=1\n' > "$DIR/status.env"
+  echo "PRR_DIR=$DIR"; echo "HEAD_MOVED=1"; echo "HEAD_NOW=$HEAD_NOW"
+  exit 0
+fi
 
 # Changed files (with per-file patches) — one retry, the list drives everything below
 for _try in 1 2; do
@@ -129,8 +148,11 @@ while read -r lrepo ln; do
     >> "$DIR/linked-prs.md" 2>/dev/null || echo "- $lrepo#$ln — could not be read" >> "$DIR/linked-prs.md"
 done < "$DIR/.linked.txt"
 
-printf 'DIFF_STATUS=%s\nDIFF_UNREAD=%s\nCONTEXT_STATUS=%s\nCI_IGNORE=%s\n' \
-  "$DIFF_STATUS" "$DIFF_UNREAD" "$CONTEXT_STATUS" "$CI_IGNORE" > "$DIR/status.env"
+# A profile that could not be resolved cannot say which paths need a human, so
+# it counts as "unknown" and post-review.sh holds the approve.
+HUMAN_FILES="$(echo "$PROF" | sed -n 's/^HUMAN_FILES=//p')"; HUMAN_FILES="${HUMAN_FILES:-unknown}"
+printf 'DIFF_STATUS=%s\nDIFF_UNREAD=%s\nCONTEXT_STATUS=%s\nHUMAN_FILES=%s\nCI_IGNORE=%s\n' \
+  "$DIFF_STATUS" "$DIFF_UNREAD" "$CONTEXT_STATUS" "$HUMAN_FILES" "$CI_IGNORE" > "$DIR/status.env"
 
 # Prior blockers — what the bot asked for last time (recheck mode reads this)
 : > "$DIR/prior-blockers.md"
@@ -138,6 +160,24 @@ if [ -n "$BOT" ]; then
   gh api "repos/$REPO/pulls/$PR/reviews?per_page=100" \
     --jq "[.[] | select(.user.login==\"$BOT\" and .state==\"CHANGES_REQUESTED\")] | last | .body // empty" \
     > "$DIR/prior-blockers.md" 2>/dev/null
+fi
+
+# Incremental diff — from the commit the block was posted on to the current head.
+# Recheck mode hunts blockers in it, so a push after a block gets read like any other.
+: > "$DIR/incremental.patch"; INCREMENTAL_STATUS=none
+if [ -s "$DIR/prior-blockers.md" ]; then
+  PREV_SHA="$(grep -o 'maestro-pr-review sha=[0-9a-f]\{7,40\}' "$DIR/prior-blockers.md" | tail -1 | sed 's/.*sha=//')"
+  INCREMENTAL_STATUS=missing     # force-push, unreadable compare, no marker → full re-read
+  if [ -n "$PREV_SHA" ] && [ "$PREV_SHA" = "$HEAD_NOW" ]; then
+    INCREMENTAL_STATUS=ok        # same commit as the block: nothing new to read
+  elif [ -n "$PREV_SHA" ] && [ -n "$HEAD_NOW" ] && [ "$PREV_SHA" != "$HEAD_NOW" ] \
+     && gh api "repos/$REPO/compare/$PREV_SHA...$HEAD_NOW" -H 'Accept: application/vnd.github.diff' \
+          > "$DIR/.incremental.raw" 2>/dev/null \
+     && python3 "$HERE/diff-fallback.py" --only "$DIR/files.txt" "$DIR/.incremental.raw" "$DIR/incremental.patch" 2>/dev/null; then
+    INCREMENTAL_STATUS=ok
+  else
+    : > "$DIR/incremental.patch"
+  fi
 fi
 
 echo "PRR_DIR=$DIR"
@@ -148,9 +188,11 @@ echo "DIFF_UNREAD=$DIFF_UNREAD"
 echo "CONTEXT_STATUS=$CONTEXT_STATUS"
 echo "$ASM" | grep -E '^CONTEXT_NODES(_EXCERPTED)?='
 echo "CONTEXT_NODES_DROPPED=$NODES_DROPPED"
-echo "$PROF" | grep -E '^(PROFILE|STACKS|RISK_FILES)='
+echo "$PROF" | grep -E '^(PROFILE|STACKS|RISK_FILES|HUMAN_FILES)='
 echo "$REL"
 echo "$CROSS"
 echo "LINKED_PRS=$(grep -c '^- ' "$DIR/linked-prs.md")"
 echo "LINKED_ISSUES=$(grep -c '^## #' "$DIR/linked-issues.md")"
 echo "HAS_PRIOR_BLOCKERS=$([ -s "$DIR/prior-blockers.md" ] && echo 1 || echo 0)"
+echo "INCREMENTAL_STATUS=$INCREMENTAL_STATUS"
+echo "INCREMENTAL_LINES=$(wc -l < "$DIR/incremental.patch" | tr -d ' ')"

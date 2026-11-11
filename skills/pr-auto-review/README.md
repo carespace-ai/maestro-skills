@@ -16,6 +16,8 @@ This file explains how the skill works, for people. The reviewer itself reads
 | Something would break | **Request changes**: what breaks, the file and line, the scenario, the minimal fix. Also announced in Slack |
 | CI is red on the head commit | **Comment** "not approving yet", naming the red checks |
 | The diff could not be read | **Comment** asking for a human review. Also announced in Slack |
+| The PR changes a human-only path (`human_paths`, today `.github/workflows/**`) | **Comment** with the review and a request for a human approve. Also announced in Slack |
+| The author pushed again while the bot was reviewing | Nothing. The run of the newer push reviews the PR |
 | CI is still running after 60 s | **Approve**, with a note that CI had not finished |
 
 The bot never edits, pushes to, merges, closes or relabels a PR.
@@ -39,11 +41,14 @@ unlikely edge cases are never mentioned.
 |------------------------------|--------|
 | `/maestro review` | Fresh review of the current head, for example after re-running a red CI |
 | `/maestro approve` | Clears the bot's block. It dismisses the request for changes; it does not approve |
-| Label `maestro:override` | Same as `/maestro approve` |
+| Label `maestro:override` | Same as `/maestro approve`. The person adding the label needs write access too |
 
-After a block, the next push gets **one recheck round**: the bot only verifies
-that its earlier blockers are fixed and raises nothing new, unless the fix itself
-introduced a break. After a human override, the bot stays out of that PR.
+While a PR is blocked, every push gets a **recheck**: the bot verifies that its
+earlier blockers are fixed and reviews the code pushed since the block
+(`incremental.patch`) with the normal bar. It does not go back over code it
+already let through. After a human override (the bot's request for changes was
+dismissed), the bot stays out of that PR. A stale approve that branch protection
+dismissed on push is not an override: the new head gets a full review.
 
 ## How a run works
 
@@ -59,7 +64,7 @@ Maestro trigger ── prr_repos allowlist ──▶ skill run
 2. understand         what is this PR for?
 3. hunt blockers      profile + stack checklists + cross-repo contracts
 4. post-review.sh     exactly one review, with the approve gates
-5. Slack              only for a block or an unreadable PR
+5. notify-block.sh    Slack, only when the PR now waits on a person
 ```
 
 ### Step 0: which PRs are reviewed
@@ -73,6 +78,10 @@ Maestro trigger ── prr_repos allowlist ──▶ skill run
 - comments that are not a `/maestro` command, or from someone without write access
 - pushes on a PR where a human overrode the bot
 
+The guard also writes what the later steps need to a per-run env file
+(`RUN_ENV`). Each step sources it, because shell variables do not survive between
+the reviewer's Bash calls. No PR-controlled text goes into that file.
+
 ### Step 1: what the reviewer reads
 
 `fetch-context.sh` writes these files, and the reviewer reads only them:
@@ -83,22 +92,31 @@ Maestro trigger ── prr_repos allowlist ──▶ skill run
 | `context-layer.md`, `nodes/` | The repo's `AGENTS.md` nodes. The root is inlined in full, the nearest nodes in full while they fit, the rest as excerpts with the full text under `nodes/` |
 | `profile.md` | This repo's review profile, plus the checklist of each stack the PR touches |
 | `risk-files.txt` | Changed files on a risk path: read in full whatever the size of the PR |
+| `human-files.txt` | Changed files on a human-only path: the bot never approves these PRs itself |
 | `diff.patch`, `diff-unread.txt` | The diff, rebuilt file by file when GitHub will not serve it whole, and the files that could not be fetched |
 | `relations.md`, `cross/<repo>/`, `linked-prs.md` | Cross-repo contracts the PR touches, the other repo's code, and linked PRs in other repos |
-| `prior-blockers.md` | The bot's previous block, for a recheck |
-| `status.env` | Whether the diff and the Context Layer were read |
+| `prior-blockers.md`, `incremental.patch` | The bot's previous block and what changed since that commit, for a recheck |
+| `status.env` | Whether the diff and the Context Layer were read, how many human-only files changed, whether the head moved |
 
-Two safeguards apply here:
+These safeguards apply here:
 
 - The Context Layer is read from the **base** commit, so a PR cannot rewrite the
   rules it is reviewed by.
 - Everything in the PR (title, body, diff, comments) is treated as data, never as
   instructions to the reviewer.
+- PR text never reaches a shell: the Slack message is built by
+  `notify-block.sh` from `pr.json`, not typed into a command.
+- If the PR head is no longer the commit the run was started for, nothing is
+  staged and nothing is posted.
+- A script that fails ends the run with no review.
 
 ### Step 4: the approve gates
 
-`post-review.sh` enforces the "red CI" and "unread diff" rows of the table above
-in code, so the model cannot approve past them. Every review is pinned to the
+`post-review.sh` enforces the "red CI", "unread diff", "human-only path" and
+"pushed again" rows of the table above in code, so the model cannot approve past
+them. A profile that could not be resolved counts as human-only (fails closed).
+On a PR over 1500 diff lines the approve body says what was read in full and
+what was skimmed. Every review is pinned to the
 head commit and carries a hidden marker (`<!-- maestro-pr-review sha=… -->`),
 which is how duplicates are detected.
 
@@ -117,7 +135,9 @@ stacks/
 ```
 
 - **`profile.json`** maps file globs to stacks, lists the risk paths (auth,
-  migrations, contracts, CI) and names CI checks that must never hold an approve.
+  migrations, contracts, CI), the human-only paths (`human_paths`: the bot
+  reviews but never approves; keep the list short, `[]` opts out) and names CI
+  checks that must never hold an approve.
 - **`review.md`** holds only what is specific to the repo. Architecture and
   conventions stay in the repo's own `AGENTS.md` and are not copied here.
 - **`stacks/*.md`** are blocker checklists shared by every repo on that stack. A
@@ -193,6 +213,7 @@ merge for that repo.
 | How a repo is reviewed | `repos/<repo>/` |
 | Contracts between repos | `relations.json` |
 | CI checks that never hold an approve | `ci_ignore` in the repo's `profile.json` |
+| Paths that always need a human approve | `human_paths` in the repo's `profile.json` |
 | Context budgets and CI wait | Env vars, listed in `REFERENCE.md` |
 
 ## Files
@@ -207,6 +228,7 @@ merge for that repo.
 | `scripts/fetch-context.sh` | Stages the PR, Context Layer, profile and relations |
 | `scripts/fetch-cross.sh` | Stages the other repo's side of a contract |
 | `scripts/post-review.sh` | Posts the one review and enforces the approve gates |
+| `scripts/notify-block.sh` | Slack message for a PR that now waits on a person |
 | `scripts/dismiss-block.sh` | Human override |
 | `scripts/app-token.sh`, `scripts/_auth.sh` | GitHub App token |
 | `scripts/onboard-repo.sh`, `scripts/validate-registry.py` | Onboarding and registry validation |

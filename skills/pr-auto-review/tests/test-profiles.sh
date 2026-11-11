@@ -45,8 +45,16 @@ PY
 pass "glob semantics"
 
 # ci_ignore from the profile reaches the approve gate through status.env
-B="$(mktemp -d)"; echo "ok" > "$B/review.md"; printf 'DIFF_STATUS=ok\nCI_IGNORE=^preview\n' > "$B/status.env"
+B="$(mktemp -d)"; echo "ok" > "$B/review.md"; printf 'DIFF_STATUS=ok\nHUMAN_FILES=0\nCI_IGNORE=^preview\n' > "$B/status.env"
 echo '{"check_runs":[{"name":"preview deploy","status":"completed","conclusion":"failure"}]}' > "$B/ci.json"
 P="$(PRR_CI_WAIT=0 PRR_CI_FILE="$B/ci.json" PRR_DRY_RUN=1 bash "$SCRIPTS/post-review.sh" o/r 1 abc APPROVE "$B/review.md")"
 echo "$P" | grep -q '"event": "APPROVE"' || fail "profile ci_ignore should keep the approve (got: $P)"; pass "profile ci_ignore reaches the approve gate"
+
+# human_paths — files the bot never approves on its own
+OUT="$(resolve carespace-mobile lib/features/home/home_page.dart .github/workflows/ci.yml)"
+[ "$(kv "$OUT" HUMAN_FILES)" = 1 ] && [ "$(cat "$T/human-files.txt")" = .github/workflows/ci.yml ] || fail "workflow change is human-only (got: $OUT)"; pass "human_paths: workflow change listed"
+OUT="$(resolve carespace-mobile lib/features/home/home_page.dart)"
+[ "$(kv "$OUT" HUMAN_FILES)" = 0 ] && [ ! -s "$T/human-files.txt" ] || fail "ordinary change is not human-only (got: $OUT)"; pass "human_paths: ordinary change not held"
+OUT="$(resolve some-unprofiled-repo .github/workflows/deploy.yml src/a.ts)"
+[ "$(kv "$OUT" HUMAN_FILES)" = 1 ] || fail "unprofiled repo gets the default human paths (got: $OUT)"; pass "human_paths: default applies without a profile"
 echo "ALL PASS"
