@@ -16,14 +16,18 @@ print(json.dumps(p))
 PY
 }
 
-# reviews <state>... — write a bot review list (oldest first) and print its path
+# reviews <state[:verdict]>... — write a bot review list (oldest first) and print its
+# path. With :verdict the body carries the marker post-review.sh writes.
 reviews() {
   local f; f="$(mktemp)"
   python3 - "$f" "$@" <<'PY'
 import json, sys
 out, states = sys.argv[1], sys.argv[2:]
-json.dump([{"id": i, "state": s, "user": {"login": "maestro-bot"}, "body": f"review {i}"}
-           for i, s in enumerate(states)], open(out, "w"))
+def review(i, spec):
+    state, _, verdict = spec.partition(":")
+    body = f"review {i}" + (f"\n\n<!-- maestro-pr-review sha=old{i} verdict={verdict} -->" if verdict else "")
+    return {"id": i, "state": state, "user": {"login": "maestro-bot"}, "body": body}
+json.dump([review(i, s) for i, s in enumerate(states)], open(out, "w"))
 PY
   echo "$f"
 }

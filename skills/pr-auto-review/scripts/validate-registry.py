@@ -48,7 +48,7 @@ def check_relations(profiled):
         unprofiled |= {r for r in (e.get("provider"), e.get("consumer")) if r and r not in profiled}
     return errs, unprofiled
 
-KEYS = {"repo", "default_branch", "stacks", "risk_paths", "ci_ignore"}
+KEYS = {"repo", "default_branch", "stacks", "risk_paths", "human_paths", "ci_ignore"}
 SECTIONS = ["## What breaks here", "## Not a blocker here"]
 
 
@@ -78,7 +78,11 @@ def check(repo, stacks):
     for r in p.get("risk_paths") or []:
         if not isinstance(r, dict) or not r.get("glob") or not r.get("why"):
             errs.append(f'risk_paths entry needs "glob" and "why": {r!r}')
-    for g in [g for gl in (p.get("stacks") or {}).values() if isinstance(gl, list) for g in gl] + \
+    human = p.get("human_paths", [])
+    if not isinstance(human, list) or not all(isinstance(g, str) and g for g in human):
+        errs.append('"human_paths" must be a list of globs')
+        human = []
+    for g in [g for gl in (p.get("stacks") or {}).values() if isinstance(gl, list) for g in gl] + human + \
              [r.get("glob", "") for r in p.get("risk_paths") or [] if isinstance(r, dict)]:
         try:
             glob_re(g)

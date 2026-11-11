@@ -10,7 +10,10 @@
 #               the bot has not blocked → full review of the new head
 #   recheck   — new push on a PR whose latest bot review is CHANGES_REQUESTED →
 #               only verify the previous blockers were fixed
-#   (a new push after a human override — bot review DISMISSED — is skipped)
+#   (a new push after a human override — the bot's REQUEST_CHANGES review was
+#   dismissed — is skipped. A dismissed APPROVE is not an override: that is
+#   branch protection dropping a stale approval on push, and the new head still
+#   needs its review.)
 #   override  — a human asked to clear the block (`/maestro approve` comment or
 #               `maestro:override` label) → dismiss the bot's blocking review
 #
@@ -25,26 +28,56 @@
 # duplicate deliveries) are what keep this skill from blocking or looping:
 # never weaken them to a "RUN on parse failure" fallback.
 #
+# Every KEY=VALUE printed is also written, shell-quoted and exported, to
+# $PRR_HOME/run-<payload hash>.env (default under ~/.prr) together with S (this
+# scripts dir) and PRR_DIR (the staging dir); its path is printed as RUN_ENV.
+# Shell variables do not survive between the skill's Bash calls, so every later
+# step starts by sourcing that file. PR-controlled text (title, body, branch
+# names) is never written to it.
+#
 # Test seams (no network): PRR_BOT_LOGIN, PRR_REVIEWS_FILE (JSON list of PR
 # reviews), PRR_PERMISSION (commenter's repo permission), PRR_PR_FILE (the PR
 # object fetched for a `/maestro review` comment).
 set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/_auth.sh"
+export PRR_SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 python3 - <<'PY'
-import json, os, re, sys, urllib.request
+import hashlib, json, os, re, shlex, sys, urllib.request
+
+ENV = {}
 
 def out(**kw):
     for k, v in kw.items():
         print(f"{k}={v}")
+        ENV[k] = str(v)
+
+def finish():
+    """Persist what the later steps need — they run in separate shells."""
+    ENV["S"] = os.environ.get("PRR_SCRIPTS", "")
+    if ENV.get("REPO_FULL") and ENV.get("PR_NUMBER"):
+        ENV["PRR_DIR"] = os.environ.get("PRR_DIR") or \
+            f"/tmp/prr-{ENV['REPO_FULL'].split('/')[-1]}-{ENV['PR_NUMBER']}"
+    home = os.environ.get("PRR_HOME") or os.path.expanduser("~/.prr")
+    try:
+        os.makedirs(home, mode=0o700, exist_ok=True)
+        key = hashlib.sha1(os.environ.get("CLAUDEHUB_INPUT_KWARGS", "").encode()).hexdigest()[:12]
+        path = os.path.join(home, f"run-{key}.env")
+        with open(path, "w") as fh:
+            fh.write("".join(f"export {k}={shlex.quote(v)}\n" for k, v in ENV.items()
+                             if re.fullmatch(r"[A-Z_][A-Z0-9_]*", k)))
+        print(f"RUN_ENV={path}")
+    except OSError as e:
+        print(f"WARN=could not write the run env file ({e})")
+    sys.exit(0)
 
 def skip(reason):
     out(DECISION="SKIP", REASON=reason)
-    sys.exit(0)
+    finish()
 
 def run(mode, reason):
     out(MODE=mode, DECISION="RUN", REASON=reason)
-    sys.exit(0)
+    finish()
 
 def gh_api(path):
     token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN") or ""
@@ -100,9 +133,28 @@ def bot_reviews(number):
     return [r for r in reviews if (r.get("user") or {}).get("login", "").lower() == bot.lower()]
 
 def latest_state(reviews):
-    # COMMENTED reviews don't change the approval state; look at the last decisive one
+    # COMMENTED reviews don't change the approval state; look at the last decisive one.
+    # A DISMISSED review is a human override only when it was a block: GitHub also
+    # turns the bot's own APPROVED into DISMISSED when "dismiss stale approvals on
+    # push" is on, and that must not silence the bot. The marker in the body says
+    # which it was.
     decisive = [r for r in reviews if r.get("state") in ("APPROVED", "CHANGES_REQUESTED", "DISMISSED")]
-    return decisive[-1]["state"] if decisive else ""
+    if not decisive:
+        return ""
+    last = decisive[-1]
+    if last["state"] == "DISMISSED":
+        return "OVERRIDDEN" if "verdict=REQUEST_CHANGES" in (last.get("body") or "") else "STALE"
+    return last["state"]
+
+def can_write(login):
+    """(ok, permission) — whether `login` may override or re-trigger the bot."""
+    perm = os.environ.get("PRR_PERMISSION")
+    if not perm:
+        try:
+            perm = gh_api(f"repos/{repo_full}/collaborators/{login}/permission").get("permission", "")
+        except Exception as e:
+            skip(f"cannot read permission of {login} ({e})")
+    return perm in ("admin", "maintain", "write"), perm
 
 forced = False   # True for `/maestro review`: skip the same-SHA idempotency guard
 
@@ -118,13 +170,8 @@ if event == "issue_comment":
     command = m.group(1).lower()
     if commenter.lower() == bot.lower():
         skip("comment authored by the bot itself")
-    perm = os.environ.get("PRR_PERMISSION")
-    if not perm:
-        try:
-            perm = gh_api(f"repos/{repo_full}/collaborators/{commenter}/permission").get("permission", "")
-        except Exception as e:
-            skip(f"cannot read commenter permission ({e})")
-    if perm not in ("admin", "maintain", "write"):
+    ok, perm = can_write(commenter)
+    if not ok:
         skip(f"commenter {commenter} lacks write access (permission={perm})")
     if command == "approve":
         if latest_state(bot_reviews(number)) != "CHANGES_REQUESTED":
@@ -155,13 +202,17 @@ out(PR_NUMBER=number, HEAD_SHA=head_sha, BASE_SHA=base.get("sha", ""),
 if pr.get("state") == "closed":
     skip("PR is closed")
 
-# Override via label (labeling already requires triage+ access)
+# Override via label — labeling only needs triage access, so hold it to the same
+# bar as the comment: the person who added the label must have write access
 if action == "labeled":
     if (p.get("label") or {}).get("name") != "maestro:override":
         skip("label is not maestro:override")
     if latest_state(bot_reviews(number)) != "CHANGES_REQUESTED":
         skip("no active bot CHANGES_REQUESTED review to clear")
     sender = (p.get("sender") or {}).get("login", "")
+    ok, perm = can_write(sender) if sender else (False, "")
+    if not ok:
+        skip(f"{sender or 'unknown sender'} added maestro:override without write access (permission={perm})")
     out(OVERRIDE_BY=sender)
     run("override", f"maestro:override label by {sender}")
 
@@ -196,10 +247,10 @@ if not forced and any(marker in (r.get("body") or "") for r in reviews):
 if action == "synchronize":
     if state == "CHANGES_REQUESTED":
         run("recheck", "new push on a PR the bot blocked — verify previous blockers")
-    if state == "DISMISSED":
+    if state == "OVERRIDDEN":
         skip("new push, but a human overrode the bot on this PR — stay out")
-    # Branch protection dismisses stale approvals on push, so every new head
-    # needs a fresh review or the PR is stuck waiting for an approve again.
+    # Branch protection dismisses stale approvals on push (state STALE), so every
+    # new head needs a fresh review or the PR is stuck waiting for an approve again.
     run("full", "new push — re-review the new head")
 
 if state == "CHANGES_REQUESTED":

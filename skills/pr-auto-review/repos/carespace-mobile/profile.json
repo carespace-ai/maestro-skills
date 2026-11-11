@@ -17,5 +17,6 @@
     {"glob": "ios/Runner/Info.plist", "why": "permissions and URL schemes"},
     {"glob": ".github/workflows/**", "why": "CI, release and store pipelines"}
   ],
+  "human_paths": [".github/workflows/**"],
   "ci_ignore": ""
 }

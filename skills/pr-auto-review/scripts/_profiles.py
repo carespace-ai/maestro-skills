@@ -25,6 +25,11 @@ DEFAULT_RISK = [
     {"glob": "**/Dockerfile*", "why": "runtime image"},
     {"glob": "**/.env*", "why": "environment / secrets file"},
 ]
+# Paths the bot never approves on its own (a person does): a change here can
+# rewrite what runs with the repo's secrets, and the bot's approve is the only
+# gate on most repos. Applies to repos without a profile; a profile sets its own
+# `human_paths` (an empty list opts out).
+DEFAULT_HUMAN = [".github/workflows/**"]
 
 
 def glob_re(glob):

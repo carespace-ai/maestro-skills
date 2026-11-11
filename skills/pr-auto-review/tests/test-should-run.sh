@@ -48,7 +48,12 @@ SYNC="$(mutate pr-opened.json 'p["action"]="synchronize"')"
 expect "sync, never reviewed"     "$(guard "$SYNC")" RUN full
 expect "sync, approved → re-review" "$(guard "$SYNC" "$(reviews APPROVED)")" RUN full
 expect "sync, blocked → recheck"  "$(guard "$SYNC" "$(reviews CHANGES_REQUESTED)")" RUN recheck
-expect "sync, block dismissed"    "$(guard "$SYNC" "$(reviews CHANGES_REQUESTED DISMISSED)")" SKIP
+expect "sync, block dismissed"    "$(guard "$SYNC" "$(reviews DISMISSED:REQUEST_CHANGES)")" SKIP
+# "dismiss stale approvals on push": the bot's own approve turns DISMISSED on the
+# next push. That is not a human override — the new head must be reviewed.
+expect "sync, stale approve dismissed → re-review" "$(guard "$SYNC" "$(reviews DISMISSED:APPROVE)")" RUN full
+expect "sync, block fixed, approve went stale" "$(guard "$SYNC" "$(reviews CHANGES_REQUESTED:REQUEST_CHANGES DISMISSED:APPROVE)")" RUN full
+expect "sync, dismissed without marker → re-review" "$(guard "$SYNC" "$(reviews DISMISSED)")" RUN full
 expect "sync, comment after block" "$(guard "$SYNC" "$(reviews CHANGES_REQUESTED COMMENTED)")" RUN recheck
 expect "reopened, blocked → recheck" "$(guard "$(mutate pr-opened.json 'p["action"]="reopened"')" "$(reviews CHANGES_REQUESTED)")" RUN recheck
 
@@ -76,7 +81,19 @@ echo "$OUT" | grep -q '^HEAD_SHA=aaaaaaa' || fail "/maestro review should report
 
 # override — label
 LABEL='p["action"]="labeled"; p["label"]={"name":"maestro:override"}; p["sender"]={"login":"lead-carol"}'
-expect "maestro:override label"   "$(guard "$(mutate pr-opened.json "$LABEL")" "$BLOCKED")" RUN override
+expect "maestro:override label (write)" "$(PRR_PERMISSION=write guard "$(mutate pr-opened.json "$LABEL")" "$BLOCKED")" RUN override
+expect "maestro:override label (triage)" "$(PRR_PERMISSION=triage guard "$(mutate pr-opened.json "$LABEL")" "$BLOCKED")" SKIP
 expect "other label"              "$(guard "$(mutate pr-opened.json 'p["action"]="labeled"; p["label"]={"name":"bug"}')" "$BLOCKED")" SKIP
+
+# run.env — later steps run in separate shells and source this instead of re-parsing
+OUT="$(guard "$(mutate pr-opened.json 'p["pull_request"]["title"]="x $(touch /tmp/prr-pwned) y"')")"
+RUN_ENV="$(echo "$OUT" | sed -n 's/^RUN_ENV=//p')"
+[ -f "$RUN_ENV" ] || fail "guard should print RUN_ENV"
+( source "$RUN_ENV"
+  [ "$DECISION" = RUN ] && [ "$MODE" = full ] && [ -n "$HEAD_SHA" ] && [ -d "$S" ] || exit 1
+  [ "$PRR_DIR" = "/tmp/prr-${REPO_FULL##*/}-$PR_NUMBER" ] || exit 1
+  [ "$REASON" = "PR opened" ] ) || fail "run.env should carry the guard output, quoted"
+pass "run env sourced (values with spaces survive)"
+grep -q 'TITLE\|pwned' "$RUN_ENV" && fail "PR title must never reach run.env"; pass "PR title is not exported"
 
 echo "ALL PASS"

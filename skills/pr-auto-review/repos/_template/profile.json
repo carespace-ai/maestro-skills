@@ -7,5 +7,6 @@
   "risk_paths": [
     {"glob": "{{path glob}}", "why": "{{what breaks if this goes wrong}}"}
   ],
+  "human_paths": [".github/workflows/**"],
   "ci_ignore": ""
 }
