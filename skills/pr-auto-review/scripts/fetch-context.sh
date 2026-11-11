@@ -207,6 +207,9 @@ if [ "${MODE:-}" = delta ] && [ "$INCREMENTAL_STATUS" = ok ]; then
   sed -n 's/^diff --git a\/.* b\/\(.*\)$/\1/p' "$DIR/incremental.patch" | sort -u > "$DIR/delta-files.txt"
   printf 'REVIEW_SCOPE=delta\nDELTA_BASE=%s\n' "$PREV_SHA" >> "$DIR/status.env"
 fi
+# Facts for the review footer (render-review.py)
+printf 'PROFILE=%s\nRELATION_IDS=%s\n' "$(echo "$PROF" | sed -n 's/^PROFILE=//p' | head -1)" \
+  "$(echo "$REL" | sed -n 's/^RELATION_IDS=//p' | head -1)" >> "$DIR/status.env"
 
 echo "PRR_DIR=$DIR"
 echo "FILES=$(wc -l < "$DIR/files.txt" | tr -d ' ')"

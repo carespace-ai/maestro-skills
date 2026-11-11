@@ -1,16 +1,34 @@
 ## 🛑 Changes requested — {{N}} blocker(s)
 
-{{ONE_LINE_PURPOSE — what this PR does, as understood}}
+### What this PR does
+{{SUMMARY}}
 
+### Blockers
 Only issues that would break the app are listed. Everything else is your call.
 
-### 1. {{What breaks}}
-- **Where:** `{{path}}:{{line}}`
-- **When:** {{concrete scenario — "when X, Y happens"}}
-- **Fix:** {{minimal change that unblocks}}
-- **Rule:** {{optional — `AGENTS.md → "<quoted Integration Rule/Contract>"`}}
+{{BLOCKERS}}
+<!-- if:RESOLVED -->
 
-<!-- repeat per blocker -->
+### Resolved since the last review
+{{RESOLVED}}
+<!-- end:RESOLVED -->
+<!-- if:CROSS_REPO -->
+
+### Cross-repo contracts
+{{CROSS_REPO}}
+<!-- end:CROSS_REPO -->
+<!-- if:HEADS_UP -->
+
+### ⚠️ Heads-up
+{{HEADS_UP}}
+<!-- end:HEADS_UP -->
+<!-- if:COVERAGE -->
+
+### Coverage
+{{COVERAGE}}
+<!-- end:COVERAGE -->
 
 ---
-Push a fix and I'll re-check **only these** blockers. Disagree? Comment `/maestro approve` (write access) to dismiss this review.
+Push a fix and I'll re-check these blockers and whatever the push adds. Disagree? Comment `/maestro approve` (write access) to dismiss this review.
+
+<sub>{{FOOTER}}</sub>

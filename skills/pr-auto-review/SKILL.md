@@ -156,21 +156,33 @@ where to look first; "Not a blocker here" is binding — do not raise those.
 
 ## STEP 4 — Decide + post one review
 
-- **0 blockers → `APPROVE`.** Body = 1–2 lines: what you understood the PR does.
-  You MAY add at most one `⚠️ Heads-up` line for a real, non-blocking risk the
-  author would want to know (e.g. "this migration locks `sessions` on large tables").
-  Otherwise nothing.
-  **When `DIFF_LINES` > 1500** (or `DIFF_STATUS=partial`) add one closing line so
-  nobody takes a partial read for a full one: `Read in full: <files or dirs>.
-  Skimmed: <the rest, grouped>.` A file you did not open at all is listed as
-  `Not read`.
-- **≥1 blocker → `REQUEST_CHANGES`.** Use `templates/request-changes.template.md`:
-  per blocker, *what breaks · where · scenario · minimal fix*; cite the Context
-  Layer rule when one is broken (e.g. ``AGENTS.md → "All runs execute in the arq
-  worker"``). Add each blocker as an inline comment when its line is in the diff.
+You never write the review's markdown. You write your findings to
+`$PRR_DIR/review.json` (shape: `templates/review.example.json`) and
+`post-review.sh` lays them out from `templates/`, so every review has the same
+sections in the same order. It adds the footer (commit, scope, size, profile,
+contracts) and generates the inline comments from the blockers that carry a `line`.
 
-- **`DIFF_STATUS=missing` → `UNREVIEWED`.** Body = one line saying you could not
-  read the diff and a human needs to look. Never an approve.
+- **0 blockers → `APPROVE`.**
+  - `summary` — 1–2 sentences: what you understood the PR does.
+  - `checked` — 1 to 8 entries `{"area", "result"}`: the hard rules, contracts and
+    risk paths this PR actually touches, and what you found for each. One sentence
+    per entry, concrete (name the function, the rule, the file). Not a list of
+    everything you read, and no praise.
+  - `cross_repo` — one entry `{"repo", "result"}` per contract in `relations.md`
+    that you verified (or could not verify — say so).
+  - `heads_up` — usually empty; at most one real, non-blocking risk the author
+    would want to know (e.g. "this migration locks `sessions` on large tables"),
+    or one per contract as STEP 3 allows.
+  - `coverage` — `{"read", "skimmed", "not_read"}`, required **when `DIFF_LINES`
+    > 1500** (or `DIFF_STATUS=partial`) so nobody takes a partial read for a full
+    one. A file you did not open at all goes in `not_read`.
+- **≥1 blocker → `REQUEST_CHANGES`.** `summary` plus `blockers`: per blocker
+  `title` (what breaks), `path`, `line` (when the line is in the diff), `when`
+  (the concrete scenario), `fix` (minimal change) and optionally `rule` — cite the
+  Context Layer rule when one is broken (e.g. ``AGENTS.md → "All runs execute in
+  the arq worker"``). `cross_repo`, `heads_up` and `coverage` as above when they apply.
+- **`DIFF_STATUS=missing` → `UNREVIEWED`.** Only `reason`: one line saying you
+  could not read the diff. Never an approve.
 
 `post-review.sh` enforces three gates on every `APPROVE`, whatever you decided:
 - **Unread diff** (`status.env` missing or `DIFF_STATUS=missing`) → posted as a COMMENT.
@@ -183,15 +195,18 @@ where to look first; "Not a blocker here" is binding — do not raise those.
   `APPROVE_HELD=ci|unread|human` when it held the approve. Don't work around any
   gate and don't repeat the CI state in your own body — the script writes that line.
 
-Write the body to `$PRR_DIR/review.md` and optional inline comments to
-`$PRR_DIR/comments.json` (`[{"path","line","body"}]`) **with the Write tool**, then
-(`<VERDICT>` = `APPROVE`, `REQUEST_CHANGES` or `UNREVIEWED`):
+Write `$PRR_DIR/review.json` **with the Write tool**, then (`<VERDICT>` =
+`APPROVE`, `REQUEST_CHANGES` or `UNREVIEWED`):
 
 ```bash
 source "<RUN_ENV>"
-bash "$S/post-review.sh" "$REPO_FULL" "$PR_NUMBER" "$HEAD_SHA" <VERDICT> \
-  "$PRR_DIR/review.md" "$( [ -s "$PRR_DIR/comments.json" ] && echo "$PRR_DIR/comments.json" )"
+bash "$S/post-review.sh" "$REPO_FULL" "$PR_NUMBER" "$HEAD_SHA" <VERDICT> "$PRR_DIR/review.json"
 ```
+
+`ERROR=review.json: …` means the findings do not fit the template (a missing
+field, an approve that lists blockers). Nothing was posted: fix `review.json` as
+the message says and run the command again. That is the one script error you fix
+and retry; a hand-written markdown body is refused.
 
 Post **exactly one** review per run. Never post a separate comment as well.
 `REVIEW_SKIPPED=head-moved` means the author pushed while you were reviewing and
@@ -237,9 +252,9 @@ printed `REVIEW_SCOPE`:
   4. An empty `incremental.patch` means the push changed none of this PR's files
      (a merge of the base branch, usually): approve with one line saying so.
 
-  STEP 4 as usual. The approve body opens with `Reviewed the changes since
-  <first 7 chars of DELTA_BASE>:` and one line on what the push does. The
-  "Read in full / Skimmed" line applies when `INCREMENTAL_LINES` > 1500.
+  STEP 4 as usual: `summary` says what the push does, `checked` covers the push
+  only. The footer names `DELTA_BASE` by itself. `coverage` applies when
+  `INCREMENTAL_LINES` > 1500.
 
 ## Recheck mode (`MODE=recheck`)
 
@@ -258,9 +273,10 @@ is narrow, but nothing new goes unread:
 3. **Do not widen the scope.** Code that was already in the PR when you blocked it
    and that you did not flag then stays unflagged — no second opinions on old code.
 
-All prior blockers fixed and nothing new → `APPROVE` ("Blockers from the previous
-review are resolved."). Otherwise `REQUEST_CHANGES` listing only the unresolved
-prior blockers and any blocker in the new code.
+List every prior blocker that is now fixed in `resolved` (one short line each).
+All prior blockers fixed and nothing new → `APPROVE`. Otherwise `REQUEST_CHANGES`
+with `blockers` holding only the unresolved prior blockers and any blocker in the
+new code.
 
 ## Re-review on request (`ACTION=rereview`)
 
@@ -288,6 +304,9 @@ bash "$S/dismiss-block.sh" "$REPO_FULL" "$PR_NUMBER" "$BOT_LOGIN" "$OVERRIDE_BY"
   (`post-review.sh` adds it). Never post reviews by hand with `gh pr review`.
 - In shadow mode (`SHADOW=1`) `post-review.sh` downgrades every verdict to COMMENT — don't work around it.
 - A script that fails means no review. Never post from a half-staged run.
+- The review body always comes from `templates/` via `review.json`. The only
+  script error you fix and retry is `ERROR=review.json: …` — it is about your
+  findings file, not about the run.
 - Never approve by any route other than `post-review.sh` — its gates (unread diff,
   human-only paths, red CI, moved head) are not yours to waive.
 - Never edit, push to, merge, close or relabel the PR. Review only.

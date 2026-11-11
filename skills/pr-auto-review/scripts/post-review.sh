@@ -6,9 +6,12 @@
 #   UNREVIEWED     the PR could not be read (diff unavailable) — posted as a COMMENT
 #                  that says so; never counts as an approve
 #
-#   BODY_FILE      markdown review body written by the skill
-#   COMMENTS_JSON  optional file: [{"path": "...", "line": 42, "body": "..."}] — blockers only,
-#                  each anchored to a RIGHT-side line that exists in the diff
+#   BODY_FILE      review.json — the reviewer's findings (shape: templates/review.example.json).
+#                  render-review.py lays them out from templates/, so every review has
+#                  the same sections; findings that do not fit → ERROR, nothing posted.
+#                  Inline comments are generated from the blockers that carry a line.
+#                  A hand-written markdown body is refused (PRR_RAW_BODY=1 = test seam,
+#                  with the optional COMMENTS_JSON [{"path","line","body"}]).
 #
 # Appends the hidden idempotency marker `<!-- maestro-pr-review sha=<HEAD_SHA> verdict=<V> -->`
 # that should-run.sh uses to drop duplicate deliveries — never post a review without it.
@@ -59,8 +62,19 @@ if [ -n "${SCRIPTS_SHA:-}" ] && [ "$(python3 "$HERE/_fingerprint.py" 2>/dev/null
   exit 3
 fi
 
-# ── Head moved — the review would land on a commit that is no longer the PR ──
+# ── Body — rendered from the templates, never free-form ──
 STAGE="${PRR_DIR:-$(dirname "$BODY_FILE")}"
+RENDERED=0
+case "$BODY_FILE" in
+  *.json)
+    RENDER_OUT="$(python3 "$HERE/render-review.py" "$BODY_FILE" "$VERDICT" "$SHA" "$STAGE" "$TMP/review.md" "$TMP/comments.json")" \
+      || { echo "${RENDER_OUT:-ERROR=cannot render the review}"; exit 4; }
+    BODY_FILE="$TMP/review.md"; COMMENTS=""; RENDERED=1
+    [ "$(cat "$TMP/comments.json")" = "[]" ] || COMMENTS="$TMP/comments.json" ;;
+  *) [ "${PRR_RAW_BODY:-0}" = "1" ] || { echo "ERROR=the review body must be review.json (see templates/review.example.json); nothing posted"; exit 4; } ;;
+esac
+
+# ── Head moved — the review would land on a commit that is no longer the PR ──
 HEAD_NOW="${PRR_HEAD_NOW:-}"
 if [ -z "$HEAD_NOW" ] && [ "${PRR_DRY_RUN:-0}" != "1" ]; then
   HEAD_NOW="$(gh api "repos/$REPO/pulls/$PR" --jq '.head.sha' 2>/dev/null)"
@@ -116,8 +130,8 @@ if [ "$VERDICT" = APPROVE ] && [ -z "$HOLD" ] && { [ "${PRR_DRY_RUN:-0}" != "1" 
 fi
 
 build() {  # $1 = inline|folded
-  python3 - "$1" "$SHA" "$VERDICT" "$SHADOW" "$BODY_FILE" "${COMMENTS:-}" "$HOLD" "$NOTE" "$CI_STATE" "$STAGE/status.env" > "$TMP/payload.json" <<'PY'
-import json, re, sys
+  PRR_RENDERED="$RENDERED" python3 - "$1" "$SHA" "$VERDICT" "$SHADOW" "$BODY_FILE" "${COMMENTS:-}" "$HOLD" "$NOTE" "$CI_STATE" "$STAGE/status.env" > "$TMP/payload.json" <<'PY'
+import json, os, re, sys
 mode, sha, verdict, shadow, body_file, comments_file, hold, note, ci, status_file = sys.argv[1:11]
 # scope=delta base=<sha> — recorded so the reviews can be measured later
 try:
@@ -137,6 +151,8 @@ elif note:
 if shadow == "1":
     event = "COMMENT"
     body = f"> 🫥 **Shadow mode** — would have been `{verdict}`; not counted as a review.\n\n{body}"
+if mode == "folded" and comments and os.environ.get("PRR_RENDERED") == "1":
+    comments = []          # the body already lists every blocker with its file:line
 if mode == "folded" and comments:
     body += "\n\n---\n" + "\n".join(f"- `{c['path']}:{c['line']}` — {c['body']}" for c in comments)
     comments = []

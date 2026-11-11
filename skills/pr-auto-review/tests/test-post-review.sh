@@ -2,6 +2,7 @@
 # Review payload: marker always present, pinned commit, shadow downgrade, inline comments.
 set -uo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+export PRR_RAW_BODY=1   # these tests feed a ready-made body; test-render.sh covers the templates
 T="$(mktemp -d)"; echo "Adds the billing export endpoint." > "$T/body.md"
 echo '[{"path":"src/a.ts","line":"12","body":"crash when user is null"}]' > "$T/c.json"
 printf 'DIFF_STATUS=ok\nHUMAN_FILES=0\n' > "$T/status.env"   # fetch-context.sh staged the diff

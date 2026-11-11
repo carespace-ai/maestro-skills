@@ -47,7 +47,7 @@ pass "glob semantics"
 # ci_ignore from the profile reaches the approve gate through status.env
 B="$(mktemp -d)"; echo "ok" > "$B/review.md"; printf 'DIFF_STATUS=ok\nHUMAN_FILES=0\nCI_IGNORE=^preview\n' > "$B/status.env"
 echo '{"check_runs":[{"name":"preview deploy","status":"completed","conclusion":"failure"}]}' > "$B/ci.json"
-P="$(PRR_CI_WAIT=0 PRR_CI_FILE="$B/ci.json" PRR_DRY_RUN=1 bash "$SCRIPTS/post-review.sh" o/r 1 abc APPROVE "$B/review.md")"
+P="$(PRR_RAW_BODY=1 PRR_CI_WAIT=0 PRR_CI_FILE="$B/ci.json" PRR_DRY_RUN=1 bash "$SCRIPTS/post-review.sh" o/r 1 abc APPROVE "$B/review.md")"
 echo "$P" | grep -q '"event": "APPROVE"' || fail "profile ci_ignore should keep the approve (got: $P)"; pass "profile ci_ignore reaches the approve gate"
 
 # human_paths — files the bot never approves on its own

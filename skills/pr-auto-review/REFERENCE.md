@@ -62,7 +62,7 @@ already carries a review. `/maestro approve` still only clears a block.
 export CLAUDEHUB_INPUT_KWARGS="$(gh api repos/carespace-ai/<repo>/pulls/<n> | python3 -c 'import json,sys; pr=json.load(sys.stdin); print(json.dumps({"action":"opened","repository":pr["base"]["repo"],"pull_request":pr}))')"
 bash scripts/should-run.sh
 bash scripts/fetch-context.sh carespace-ai/<repo> <n> <base_sha>
-PRR_DRY_RUN=1 bash scripts/post-review.sh carespace-ai/<repo> <n> <head_sha> APPROVE /tmp/review.md
+PRR_DRY_RUN=1 bash scripts/post-review.sh carespace-ai/<repo> <n> <head_sha> APPROVE /tmp/review.json   # findings, shape: templates/review.example.json
 ```
 
 # Tests
