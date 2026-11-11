@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # notify-block.sh — tell Slack about a PR the bot did not approve.
 #
-# Usage: notify-block.sh <REPO_FULL> <PR_NUMBER> <blocked|unreviewed|human> [SUMMARY_FILE]
+# Usage: notify-block.sh <REPO_FULL> <PR_NUMBER> <blocked|unreviewed|human|failed> [SUMMARY_FILE]
 #
 #   blocked      the bot requested changes   (summary = one line per blocker)
 #   unreviewed   the diff could not be read  (summary = why)
 #   human        the PR touches human-only paths and waits for a person
+#   failed       a skill script failed, so no review was posted (summary = the ERROR= line)
 #   SUMMARY_FILE plain text written by the skill; read as data, never by the shell
 #
 # The PR title is read from $PRR_DIR/pr.json — it is never passed on a command
@@ -22,7 +23,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 done_() { echo "NOTIFY=$1"; [ -z "${2:-}" ] || echo "NOTIFY_REASON=$2"; exit 0; }
 
 [[ "$REPO" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ && "$PR" =~ ^[0-9]+$ ]] || done_ failed "bad repo or PR number"
-case "$KIND" in blocked|unreviewed|human) ;; *) done_ failed "unknown kind '$KIND'" ;; esac
+case "$KIND" in blocked|unreviewed|human|failed) ;; *) done_ failed "unknown kind '$KIND'" ;; esac
 [ "${SHADOW:-${PRR_SHADOW:-0}}" = "1" ] && done_ skipped "shadow mode"
 DIR="${PRR_DIR:-/tmp/prr-${REPO##*/}-$PR}"
 
@@ -47,6 +48,8 @@ link = f"<https://github.com/{repo}/pull/{number}|{title or f'{repo}#{number}'}>
 head, tail = {
     "blocked": (f"🛑 PR blocked: {repo}#{number}", "Override: comment `/maestro approve`."),
     "unreviewed": (f"👀 PR needs a human review: {repo}#{number}", "Retry: comment `/maestro review`."),
+    "failed": (f"⚠️ PR review did not run: {repo}#{number}",
+               "Nothing was posted on the PR. Fix the skill, then comment `/maestro review`."),
     "human": (f"🙋 PR needs a human approve: {repo}#{number}",
               "It changes files the bot never approves on its own."),
 }[kind]

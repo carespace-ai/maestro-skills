@@ -88,3 +88,12 @@ printf 'DIFF_STATUS=ok\nHUMAN_FILES=0\nREVIEW_SCOPE=delta\nDELTA_BASE=$(id)\n' >
 P="$(PRR_DRY_RUN=1 bash "$SCRIPTS/post-review.sh" o/r 1 $SHA APPROVE "$D/body.md")"
 echo "$P" | field body | grep -q "scope=delta" && fail "a malformed base must not reach the marker"; pass "malformed delta base ignored"
 echo "ALL PASS"
+
+# ── scripts patched mid-run: nothing is posted ──
+G="$(mktemp -d)"; cp "$T/body.md" "$G/body.md"; cp "$T/status.env" "$G/status.env"
+GOOD="$(python3 "$SCRIPTS/_fingerprint.py")"
+OUT="$(SCRIPTS_SHA="$GOOD" PRR_DRY_RUN=1 bash "$SCRIPTS/post-review.sh" o/r 1 abc123 APPROVE "$G/body.md")"
+echo "$OUT" | grep -q '^ERROR=' && fail "unchanged scripts must still post"; pass "matching SCRIPTS_SHA → posts"
+OUT="$(SCRIPTS_SHA=deadbeef PRR_DRY_RUN=1 bash "$SCRIPTS/post-review.sh" o/r 1 abc123 APPROVE "$G/body.md")"; RC=$?
+[ "$RC" = 3 ] && echo "$OUT" | grep -q '^ERROR=skill scripts were modified' || fail "changed scripts must post nothing"
+echo "$OUT" | grep -q '"event"' && fail "changed scripts must not build a payload"; pass "SCRIPTS_SHA mismatch → nothing posted"

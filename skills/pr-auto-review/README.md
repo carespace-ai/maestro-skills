@@ -122,7 +122,12 @@ These safeguards apply here:
   `notify-block.sh` from `pr.json`, not typed into a command.
 - If the PR head is no longer the commit the run was started for, nothing is
   staged and nothing is posted.
-- A script that fails ends the run with no review.
+- A script that fails ends the run with no review, and Slack is told
+  (`notify-block.sh … failed`). The fix goes in this repo; then `/maestro review`.
+- A run never patches a script to get past a failure. The guard records a
+  fingerprint of `scripts/` (`SCRIPTS_SHA`) and `post-review.sh` posts nothing if
+  it changed. On 2026-11-11 a run edited `fetch-context.sh` in the container
+  after it failed and approved a PR from there; this gate is the answer to that.
 
 ### Step 4: the approve gates
 
@@ -318,6 +323,3 @@ The reviewer must not open `cases.json`; it holds the answers.
   be made in both places.
 - Running the eval set on a schedule. `eval-run.sh` runs it with one command,
   but someone has to start it.
-- Telling anyone when a run fails before it posts. A script that fails means no
-  review and no message, so a broken script (as on 2026-11-11, when the
-  container's `gh` rejected a field) only shows as PRs without a review.

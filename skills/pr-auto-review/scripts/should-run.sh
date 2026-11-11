@@ -47,7 +47,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/_auth.sh"
 export PRR_SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 python3 - <<'PY'
-import hashlib, json, os, re, shlex, sys, urllib.request
+import hashlib, json, os, re, shlex, subprocess, sys, urllib.request
 
 ENV = {}
 
@@ -59,6 +59,12 @@ def out(**kw):
 def finish():
     """Persist what the later steps need — they run in separate shells."""
     ENV["S"] = os.environ.get("PRR_SCRIPTS", "")
+    try:   # post-review.sh refuses to post if a script changed after this point
+        ENV["SCRIPTS_SHA"] = subprocess.run(
+            [sys.executable, os.path.join(ENV["S"], "_fingerprint.py")],
+            capture_output=True, text=True, timeout=20).stdout.strip()
+    except Exception:
+        ENV["SCRIPTS_SHA"] = ""
     if ENV.get("REPO_FULL") and ENV.get("PR_NUMBER"):
         ENV["PRR_DIR"] = os.environ.get("PRR_DIR") or \
             f"/tmp/prr-{ENV['REPO_FULL'].split('/')[-1]}-{ENV['PR_NUMBER']}"
