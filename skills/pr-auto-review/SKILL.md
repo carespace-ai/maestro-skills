@@ -53,6 +53,7 @@ run.** A failed script is never a reason to approve from what you happen to have
 
 `MODE` routes the rest:
 - `full` → STEP 1–5
+- `delta` → STEP 1, then **Delta mode** below, then STEP 4–5
 - `recheck` → STEP 1, then **Recheck mode** below, then STEP 4–5
 - `override` → **Override mode** below, then stop
 
@@ -206,6 +207,28 @@ run: `NOTIFY=failed` is logged and the run still ends successfully.
 
 Approvals are not announced — they're the normal case. A held approve for failing
 CI (`APPROVE_HELD=ci`) is not announced either — the author already sees the red check.
+
+## Delta mode (`MODE=delta`)
+
+A new push on a PR whose previous head you already read and found clean. STEP 1
+printed `REVIEW_SCOPE`:
+
+- **`REVIEW_SCOPE=full`** — the diff since that commit could not be built
+  (force-push, rebase). Run STEP 2–5 as a normal full review.
+- **`REVIEW_SCOPE=delta`** — review **only the push**:
+  1. Read `pr.json`, `context-layer.md`, `profile.md` and `relations.md` as usual.
+  2. Run STEP 3 on `incremental.patch` (what changed since `DELTA_BASE`), with the
+     same three-part bar. A file in both `delta-files.txt` and `risk-files.txt`
+     is read in full.
+  3. `diff.patch` is there for context only: open it when you need to know how the
+     new lines meet the rest of the PR. Code that was already in the PR at
+     `DELTA_BASE` is not re-judged — no second opinions on what you let through.
+  4. An empty `incremental.patch` means the push changed none of this PR's files
+     (a merge of the base branch, usually): approve with one line saying so.
+
+  STEP 4 as usual. The approve body opens with `Reviewed the changes since
+  <first 7 chars of DELTA_BASE>:` and one line on what the push does. The
+  "Read in full / Skimmed" line applies when `INCREMENTAL_LINES` > 1500.
 
 ## Recheck mode (`MODE=recheck`)
 

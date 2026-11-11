@@ -106,9 +106,17 @@ if [ "$VERDICT" = APPROVE ] && [ -z "$HOLD" ] && { [ "${PRR_DRY_RUN:-0}" != "1" 
 fi
 
 build() {  # $1 = inline|folded
-  python3 - "$1" "$SHA" "$VERDICT" "$SHADOW" "$BODY_FILE" "${COMMENTS:-}" "$HOLD" "$NOTE" "$CI_STATE" > "$TMP/payload.json" <<'PY'
-import json, sys
-mode, sha, verdict, shadow, body_file, comments_file, hold, note, ci = sys.argv[1:10]
+  python3 - "$1" "$SHA" "$VERDICT" "$SHADOW" "$BODY_FILE" "${COMMENTS:-}" "$HOLD" "$NOTE" "$CI_STATE" "$STAGE/status.env" > "$TMP/payload.json" <<'PY'
+import json, re, sys
+mode, sha, verdict, shadow, body_file, comments_file, hold, note, ci, status_file = sys.argv[1:11]
+# scope=delta base=<sha> — recorded so the reviews can be measured later
+try:
+    st = dict(l.strip().split("=", 1) for l in open(status_file) if "=" in l)
+except OSError:
+    st = {}
+scope = ""
+if st.get("REVIEW_SCOPE") == "delta" and re.fullmatch(r"[0-9a-f]{7,40}", st.get("DELTA_BASE", "")):
+    scope = f" scope=delta base={st['DELTA_BASE'][:12]}"
 body = open(body_file).read().rstrip()
 comments = json.load(open(comments_file)) if comments_file else []
 event = "COMMENT" if (verdict == "UNREVIEWED" or hold) else verdict
@@ -122,7 +130,7 @@ if shadow == "1":
 if mode == "folded" and comments:
     body += "\n\n---\n" + "\n".join(f"- `{c['path']}:{c['line']}` — {c['body']}" for c in comments)
     comments = []
-extra = (f" held={hold}" if hold else "") + (f" ci={ci}" if ci not in ("skipped", "") else "")
+extra = (f" held={hold}" if hold else "") + (f" ci={ci}" if ci not in ("skipped", "") else "") + scope
 body += f"\n\n<!-- maestro-pr-review sha={sha} verdict={verdict}{extra} -->"
 payload = {"commit_id": sha, "event": event, "body": body}
 if comments:

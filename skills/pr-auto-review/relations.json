@@ -66,6 +66,15 @@
       "surface": "Strapi collections the agent reads (GET only, fixed collection paths)",
       "provider_paths": ["src/api/**"],
       "consumer_paths": ["src/carespace_agent/content/**"]
+    },
+    {
+      "id": "strapi-content-mobile",
+      "provider": "carespace-strapi",
+      "consumer": "carespace-mobile",
+      "coupling": "immediate",
+      "surface": "Strapi content the app reads directly: collection paths, field names and the populate / filter keys of each query. Strapi v5 rejects a whole request with 400 'Invalid key' when a populate or filter key is not on the content type",
+      "provider_paths": ["src/api/**", "src/components/**"],
+      "consumer_paths": ["lib/data/api/strapi_api.dart", "lib/data/api/survey_api.dart"]
     }
   ]
 }

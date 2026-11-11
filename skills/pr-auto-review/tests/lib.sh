@@ -25,7 +25,7 @@ import json, sys
 out, states = sys.argv[1], sys.argv[2:]
 def review(i, spec):
     state, _, verdict = spec.partition(":")
-    body = f"review {i}" + (f"\n\n<!-- maestro-pr-review sha=old{i} verdict={verdict} -->" if verdict else "")
+    body = f"review {i}" + (f"\n\n<!-- maestro-pr-review sha={i:02x}c0ffee verdict={verdict} -->" if verdict else "")
     return {"id": i, "state": state, "user": {"login": "maestro-bot"}, "body": body}
 json.dump([review(i, s) for i, s in enumerate(states)], open(out, "w"))
 PY

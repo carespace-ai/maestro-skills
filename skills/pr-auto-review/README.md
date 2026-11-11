@@ -59,7 +59,7 @@ GitHub webhook (pull_request / issue_comment)
 Maestro trigger ── prr_repos allowlist ──▶ skill run
       │
       ▼
-0. should-run.sh      RUN or SKIP, and which mode (full / recheck / override)
+0. should-run.sh      RUN or SKIP, and which mode (full / delta / recheck / override)
 1. fetch-context.sh   stages everything the review needs into $PRR_DIR
 2. understand         what is this PR for?
 3. hunt blockers      profile + stack checklists + cross-repo contracts
@@ -95,8 +95,22 @@ the reviewer's Bash calls. No PR-controlled text goes into that file.
 | `human-files.txt` | Changed files on a human-only path: the bot never approves these PRs itself |
 | `diff.patch`, `diff-unread.txt` | The diff, rebuilt file by file when GitHub will not serve it whole, and the files that could not be fetched |
 | `relations.md`, `cross/<repo>/`, `linked-prs.md` | Cross-repo contracts the PR touches, the other repo's code, and linked PRs in other repos |
-| `prior-blockers.md`, `incremental.patch` | The bot's previous block and what changed since that commit, for a recheck |
+| `prior-blockers.md`, `incremental.patch`, `delta-files.txt` | The bot's previous block (recheck) and what changed since the commit it last reviewed (recheck and delta) |
 | `status.env` | Whether the diff and the Context Layer were read, how many human-only files changed, whether the head moved |
+
+### A new push: only the delta
+
+When the bot's latest review of a PR found no blockers, the next push runs in
+`delta` mode: the reviewer hunts blockers only in `incremental.patch`, the diff
+since the commit it already read (`DELTA_BASE`). The full `diff.patch` is staged
+for context, and code that was already there is not judged a second time.
+
+- A changed file on a risk path is still read in full.
+- If that diff cannot be built (force-push, rebase), the run is a full review.
+- An approve that was held because the diff was unreadable never serves as a
+  base: the next push is a full review.
+- The review marker records `scope=delta base=<sha>`, so delta reviews can be
+  told apart later.
 
 These safeguards apply here:
 
@@ -162,6 +176,7 @@ Field reference: [`repos/README.md`](repos/README.md).
 | `admin-rest-sdk` | carespace-admin → carespace-sdk | immediate |
 | `widgetbook-ui` | carespace-widgetbook → carespace-mobile | immediate |
 | `strapi-content-agent` | carespace-strapi → carespace-agent | immediate |
+| `strapi-content-mobile` | carespace-strapi → carespace-mobile | immediate |
 
 - **Immediate** means the consumer meets the change as soon as the provider
   ships. A break is a **blocker**.
@@ -233,11 +248,39 @@ merge for that repo.
 | `scripts/app-token.sh`, `scripts/_auth.sh` | GitHub App token |
 | `scripts/onboard-repo.sh`, `scripts/validate-registry.py` | Onboarding and registry validation |
 | `scripts/*.py` (others) | Helpers called by the scripts above |
+| `evals/cases.json`, `evals/RUNNER.md` | Eval cases (merged PRs with a known outcome) and how a reviewer runs one |
+| `scripts/eval-stage.sh`, `scripts/eval-grade.py` | Stage an eval case in dry-run, and grade the reviews |
 | `tests/` | `for t in tests/test-*.sh; do bash "$t"; done` (no network, no token) |
+
+## Measuring the reviewer: evals
+
+`evals/cases.json` holds merged PRs whose outcome is known: PRs that shipped a
+bug a later PR had to fix, control PRs with no known defect, and PRs that touched
+an older defect without introducing it. Each case pins
+the base and head commits, so it is reviewed exactly as it was at the time.
+
+```bash
+scripts/eval-stage.sh --list           # the cases
+scripts/eval-stage.sh <case-id>        # stage one, read-only, prints RUN_ENV=
+# a reviewer follows evals/RUNNER.md with that RUN_ENV (nothing is posted)
+scripts/eval-grade.py                  # grade every case that has a payload
+```
+
+A bug case is `caught` (blocked, naming the defect), `flagged` (approved with a
+heads-up naming it), `wrong-reason` or `missed`. A control case is `clean` or
+`false-block`. A `preexisting` case is a PR that touched code with an older
+defect it did not introduce: the bot should approve, ideally naming it (`noted`),
+and blocking it counts as a `false-block`. Run the set after changing `SKILL.md`, a profile or a stack
+checklist, and add a case whenever a bug gets past the bot: the fix PR names the
+PR that introduced it.
+
+The reviewer must not open `cases.json`; it holds the answers.
 
 ## Not built yet
 
-- An eval set of PRs with known bugs, to measure what the bot misses.
 - Filtering webhook events in the Maestro backend, so a comment or label does
-  not start a full run just to skip.
-- Reviewing only the delta on each push instead of the whole PR.
+  not start a full run just to skip: open as `carespace-ai/maestro#10`, not
+  deployed. It repeats the payload-only skip rules of `scripts/should-run.sh`,
+  so a change to those rules (a new reviewed action, a new author rule) has to
+  be made in both places.
+- Running the eval set automatically (today it is run by hand).

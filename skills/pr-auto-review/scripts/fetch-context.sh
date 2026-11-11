@@ -31,9 +31,9 @@
 #                      not be read or that touches a human-only path
 #   ci.txt             check status at fetch time (informational, often pending)
 #   prior-blockers.md  body of the bot's latest CHANGES_REQUESTED review (if any)
-#   incremental.patch  what changed since the commit that review was posted on,
-#                      limited to this PR's files (recheck mode reads it so new
-#                      code pushed after a block is not approved unread)
+#   incremental.patch  what changed since the commit of the bot's previous review,
+#                      limited to this PR's files: since the block (recheck) or
+#                      since the last clean read (delta, with delta-files.txt)
 #
 # The Context Layer is read from the BASE sha on purpose: a PR must not be able
 # to rewrite the reviewer's instructions by editing AGENTS.md in its own diff.
@@ -162,15 +162,30 @@ if [ -n "$BOT" ]; then
     > "$DIR/prior-blockers.md" 2>/dev/null
 fi
 
-# Incremental diff — from the commit the block was posted on to the current head.
-# Recheck mode hunts blockers in it, so a push after a block gets read like any other.
-: > "$DIR/incremental.patch"; INCREMENTAL_STATUS=none
-if [ -s "$DIR/prior-blockers.md" ]; then
+# Incremental diff — from the commit of the bot's previous review to the current head.
+#   recheck: from the commit the block was posted on, so a push after a block
+#            gets read like any other
+#   delta:   from the last commit the bot read and found clean ($DELTA_BASE, set
+#            by the guard), so a push is reviewed for what it changed
+# REVIEW_SCOPE=delta only when that diff could be built; otherwise the whole PR
+# is reviewed again.
+: > "$DIR/incremental.patch"; : > "$DIR/delta-files.txt"; INCREMENTAL_STATUS=none; PREV_SHA=""
+if [ "${MODE:-}" = delta ] && [[ "${DELTA_BASE:-}" =~ ^[0-9a-f]{7,40}$ ]]; then
+  PREV_SHA="$DELTA_BASE"
+elif [ "${MODE:-}" != delta ] && [ -s "$DIR/prior-blockers.md" ]; then
   PREV_SHA="$(grep -o 'maestro-pr-review sha=[0-9a-f]\{7,40\}' "$DIR/prior-blockers.md" | tail -1 | sed 's/.*sha=//')"
+  [ -n "$PREV_SHA" ] || PREV_SHA=unknown
+fi
+if [ -n "$PREV_SHA" ]; then
+  [ "$PREV_SHA" != unknown ] || PREV_SHA=""
+  # `ahead` = the previous commit is an ancestor of the head. After a force-push
+  # or rebase it is not, and the compare would be against their merge base, not
+  # against what was read — so that counts as missing.
   INCREMENTAL_STATUS=missing     # force-push, unreadable compare, no marker → full re-read
   if [ -n "$PREV_SHA" ] && [ "$PREV_SHA" = "$HEAD_NOW" ]; then
     INCREMENTAL_STATUS=ok        # same commit as the block: nothing new to read
   elif [ -n "$PREV_SHA" ] && [ -n "$HEAD_NOW" ] && [ "$PREV_SHA" != "$HEAD_NOW" ] \
+     && [ "$(gh api "repos/$REPO/compare/$PREV_SHA...$HEAD_NOW" --jq .status 2>/dev/null)" = ahead ] \
      && gh api "repos/$REPO/compare/$PREV_SHA...$HEAD_NOW" -H 'Accept: application/vnd.github.diff' \
           > "$DIR/.incremental.raw" 2>/dev/null \
      && python3 "$HERE/diff-fallback.py" --only "$DIR/files.txt" "$DIR/.incremental.raw" "$DIR/incremental.patch" 2>/dev/null; then
@@ -178,6 +193,12 @@ if [ -s "$DIR/prior-blockers.md" ]; then
   else
     : > "$DIR/incremental.patch"
   fi
+fi
+REVIEW_SCOPE=full
+if [ "${MODE:-}" = delta ] && [ "$INCREMENTAL_STATUS" = ok ]; then
+  REVIEW_SCOPE=delta
+  sed -n 's/^diff --git a\/.* b\/\(.*\)$/\1/p' "$DIR/incremental.patch" | sort -u > "$DIR/delta-files.txt"
+  printf 'REVIEW_SCOPE=delta\nDELTA_BASE=%s\n' "$PREV_SHA" >> "$DIR/status.env"
 fi
 
 echo "PRR_DIR=$DIR"
@@ -196,3 +217,5 @@ echo "LINKED_ISSUES=$(grep -c '^## #' "$DIR/linked-issues.md")"
 echo "HAS_PRIOR_BLOCKERS=$([ -s "$DIR/prior-blockers.md" ] && echo 1 || echo 0)"
 echo "INCREMENTAL_STATUS=$INCREMENTAL_STATUS"
 echo "INCREMENTAL_LINES=$(wc -l < "$DIR/incremental.patch" | tr -d ' ')"
+echo "REVIEW_SCOPE=$REVIEW_SCOPE"
+echo "DELTA_FILES=$(wc -l < "$DIR/delta-files.txt" | tr -d ' ')"

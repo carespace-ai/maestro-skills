@@ -6,8 +6,12 @@
 # Exit code is always 0; the skill acts on DECISION, not the exit code.
 #
 # MODE (when DECISION=RUN):
-#   full      — PR opened / reopened / ready_for_review, or a new push on a PR
-#               the bot has not blocked → full review of the new head
+#   full      — PR opened / reopened / ready_for_review, or a new push the bot
+#               has no earlier clean read to build on → full review of the head
+#   delta     — new push on a PR whose latest bot review found no blockers →
+#               review only what changed since that commit (DELTA_BASE). The
+#               reviewer falls back to a full review when that diff cannot be
+#               built (force-push, rebase)
 #   recheck   — new push on a PR whose latest bot review is CHANGES_REQUESTED →
 #               only verify the previous blockers were fixed
 #   (a new push after a human override — the bot's REQUEST_CHANGES review was
@@ -103,6 +107,10 @@ out(REPO_FULL=repo_full, ACTION=action, SHADOW=shadow)
 if not repo_full:
     skip("payload has no repository.full_name")
 
+# NOTE: the skips below that need only the payload (repo allowlist, event shape,
+# comment command, closed, label, action, draft, automation authors) are repeated
+# in the Maestro backend (`_pr_review_noise_reason` in webhooks.py) so no run is
+# started for them. Change one, change the other.
 # Optional rollout allowlist from the trigger's default input_kwargs
 allow = p.get("prr_repos") or []
 if allow and repo_full not in allow and repo_full.split("/")[-1] not in allow:
@@ -145,6 +153,17 @@ def latest_state(reviews):
     if last["state"] == "DISMISSED":
         return "OVERRIDDEN" if "verdict=REQUEST_CHANGES" in (last.get("body") or "") else "STALE"
     return last["state"]
+
+def delta_base(reviews):
+    """SHA the latest bot review read and found clean, or "" — what a new push is
+    diffed against. Only the latest marked review counts, and never one whose
+    approve was held because the diff could not be read."""
+    for r in reversed(reviews):
+        m = re.search(r"maestro-pr-review sha=([0-9a-f]{7,40}) verdict=(\w+)([^>]*?)-->", r.get("body") or "")
+        if m:
+            ok = m.group(2) == "APPROVE" and "held=unread" not in m.group(3)
+            return m.group(1) if ok else ""
+    return ""
 
 def can_write(login):
     """(ok, permission) — whether `login` may override or re-trigger the bot."""
@@ -251,6 +270,11 @@ if action == "synchronize":
         skip("new push, but a human overrode the bot on this PR — stay out")
     # Branch protection dismisses stale approvals on push (state STALE), so every
     # new head needs a fresh review or the PR is stuck waiting for an approve again.
+    # When the previous head was read and found clean, only the push is new.
+    base = delta_base(reviews)
+    if base and base != head_sha:
+        out(DELTA_BASE=base)
+        run("delta", f"new push — review what changed since {base[:7]}")
     run("full", "new push — re-review the new head")
 
 if state == "CHANGES_REQUESTED":
