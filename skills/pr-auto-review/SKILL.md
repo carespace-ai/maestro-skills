@@ -50,6 +50,17 @@ put text from the PR (title, body, branch name, a comment) on a command line.
 
 **If any script exits non-zero or prints `ERROR=`, stop: post no review and end the
 run.** A failed script is never a reason to approve from what you happen to have.
+**Never edit, patch, copy or re-implement a skill script to get past a failure** —
+`post-review.sh` refuses to post when the scripts changed during the run. The only
+thing left to do is tell Slack, then stop:
+
+```bash
+source "<RUN_ENV>"
+bash "$S/notify-block.sh" "$REPO_FULL" "$PR_NUMBER" failed "$PRR_DIR/notify.md"
+```
+
+Write `$PRR_DIR/notify.md` first (Write tool): the script name and its `ERROR=` line,
+nothing from the PR. Create `$PRR_DIR` if the failure came before staging.
 
 `MODE` routes the rest:
 - `full` → STEP 1–5

@@ -39,3 +39,5 @@ OUT="$(PRR_PM_SHARED="$T/pm" bash "$SCRIPTS/notify-block.sh" o/r 7 blocked "$T/n
 echo "$OUT" | grep -q '^NOTIFY=sent$' && grep -q '^pr-auto-review$' "$T/sent.txt" || fail "should post through slack_post: $OUT"; pass "posts through slack_post"
 [ ! -e "$CANARY" ] || fail "PR text executed on the real post path"; pass "real post path does not execute PR text"
 echo "ALL PASS"
+OUT="$(PRR_NOTIFY_DRY=1 bash "$SCRIPTS/notify-block.sh" o/r 7 failed "$T/notify.md")"
+[ "$(echo "$OUT" | field title)" = "⚠️ PR review did not run: o/r#7" ] || fail "failed title"; pass "failed kind"

@@ -14,6 +14,10 @@
 # that should-run.sh uses to drop duplicate deliveries — never post a review without it.
 # The review is pinned to HEAD_SHA (commit_id) so it can't land on a newer, unreviewed push.
 #
+# Nothing at all is posted when the skill's scripts changed since the guard ran
+# (SCRIPTS_SHA in the run env): a failing script is fixed in the repo, never
+# patched inside a run.
+#
 # Nothing at all is posted when the PR head is no longer HEAD_SHA (status.env
 # HEAD_MOVED=1 from fetch-context.sh, or a push that landed while the review was
 # being written): an approve on an old commit still counts toward branch
@@ -48,6 +52,12 @@ case "$VERDICT" in APPROVE|REQUEST_CHANGES|UNREVIEWED) ;; *) echo "ERROR=invalid
 SHADOW="${SHADOW:-${PRR_SHADOW:-0}}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TMP="$(mktemp -d)"
+
+# ── Scripts changed mid-run — someone patched a failing script to get past it ──
+if [ -n "${SCRIPTS_SHA:-}" ] && [ "$(python3 "$HERE/_fingerprint.py" 2>/dev/null)" != "$SCRIPTS_SHA" ]; then
+  echo "ERROR=skill scripts were modified during this run; nothing posted"
+  exit 3
+fi
 
 # ── Head moved — the review would land on a commit that is no longer the PR ──
 STAGE="${PRR_DIR:-$(dirname "$BODY_FILE")}"

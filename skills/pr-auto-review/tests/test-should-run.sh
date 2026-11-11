@@ -107,3 +107,5 @@ pass "run env sourced (values with spaces survive)"
 grep -q 'TITLE\|pwned' "$RUN_ENV" && fail "PR title must never reach run.env"; pass "PR title is not exported"
 
 echo "ALL PASS"
+( source "$RUN_ENV"; [ "$SCRIPTS_SHA" = "$(python3 "$SCRIPTS/_fingerprint.py")" ] ) || fail "run.env should carry the scripts fingerprint"
+pass "scripts fingerprint recorded"
