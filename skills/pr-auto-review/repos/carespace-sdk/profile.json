@@ -1,0 +1,18 @@
+{
+  "repo": "carespace-sdk",
+  "default_branch": "main",
+  "stacks": {
+    "flutter": ["lib/**", "test/**", "packages/**", "example/**", "android/**", "ios/**", "android_integration/**", "ios_integration/**", "tool/**", "pubspec.yaml"],
+    "infra": [".github/**"]
+  },
+  "risk_paths": [
+    {"glob": "packages/scan/android/**", "why": "native Android pose engine and camera pipeline"},
+    {"glob": "packages/scan/ios/**", "why": "native iOS pose engine and camera pipeline"},
+    {"glob": "packages/scan_queue/**", "why": "encrypted offline queue and upload workers (PHI at rest)"},
+    {"glob": "packages/*/lib/*.dart", "why": "package public API (exports) consumed by host apps"},
+    {"glob": "packages/*/pubspec.yaml", "why": "package version and dependency constraints"},
+    {"glob": "**/*logger*", "why": "PHI redaction in SDK logging"},
+    {"glob": ".github/workflows/**", "why": "release, tagging and the dispatch that bumps carespace-mobile"}
+  ],
+  "ci_ignore": ""
+}

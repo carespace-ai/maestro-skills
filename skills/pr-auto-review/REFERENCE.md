@@ -1,45 +1,8 @@
-# pr-auto-review — per-stack blocker checklists
+# pr-auto-review — reference
 
-Lazy-loaded. Use only for the stack the diff touches. Every item is a **blocker
-candidate** — it still has to pass the three-part test in SKILL.md STEP 3
-(breaks something · exact line + scenario · confident). Not on this list → not a blocker.
-
-## NestJS / Prisma (backend APIs)
-- New/changed controller route without the guard its siblings use (`@UseGuards`, role/tenant checks) → unauthenticated or cross-tenant access.
-- Prisma query that drops the tenant/clinic/patient scoping filter its siblings apply.
-- `prisma migrate` that drops/renames a column or table still read by code in this repo or a documented consumer; `NOT NULL` added without default/backfill.
-- DTO/response shape change on an endpoint the Context Layer lists as consumed by another app (mobile, web, bots).
-- PHI (patient names, DOB, notes, media URLs) written to logs, error messages, analytics or 3rd-party calls.
-- `await` missing on a write whose result is relied on; unhandled promise in a request path.
-- New required env var read without default and not added to deploy config.
-
-## React / Next.js (web)
-- Runtime crash on render: accessing a property of possibly-undefined API data with no guard on a path users hit.
-- Hook rule violation (conditional hook) — crashes at runtime.
-- API client call shape out of sync with the backend contract changed in the same PR group.
-- Secrets/keys in client bundles (`NEXT_PUBLIC_*` holding a server secret).
-- `dangerouslySetInnerHTML` with user/patient content.
-
-## Flutter / Dart (carespace-mobile, kiosk)
-- Null-check `!` on data that the API can return null → crash.
-- `BuildContext` used after `await` without `mounted` check in a navigation/dialog path.
-- Platform channel / permission change without the matching Android manifest / iOS Info.plist entry → crash or store rejection.
-- Asset or path dependency referenced but not declared in `pubspec.yaml`.
-- Breaking change to a model's `fromJson` that the backend still sends in the old shape.
-
-## Python / FastAPI (maestro, workers)
-- Route missing the auth dependency its siblings use.
-- Alembic migration that is destructive or non-reversible on live data without a backfill.
-- Blocking/long work moved into the API process where the Context Layer says it must run in the worker.
-- SQL built with f-strings from request input.
-- Sync I/O inside `async def` on a hot path that would stall the event loop (only if it clearly would).
-
-## Infra / config
-- Workflow/CI change that disables required checks or exposes secrets to PRs from forks.
-- Dockerfile/compose change that removes a needed env, port or volume.
-- Committed credentials, private keys, `.env` files.
-
----
+Lazy-loaded. Per-stack blocker checklists live in `stacks/`, per-repo review
+profiles in `repos/` (see `repos/README.md`). `fetch-context.sh` stages the ones a
+PR needs into `$PRR_DIR/profile.md` — you never read `stacks/` or `repos/` directly.
 
 # One-time setup
 
@@ -80,7 +43,7 @@ candidate** — it still has to pass the three-part test in SKILL.md STEP 3
 | Env var | Default | Meaning |
 |---------|---------|---------|
 | `PRR_CI_WAIT` | `60` | seconds to wait for running checks before posting (keep under the Bash tool timeout) |
-| `PRR_CI_IGNORE` | — | regex of check / status names that never hold an approve (preview deploys, advisory jobs) |
+| `PRR_CI_IGNORE` | repo profile `ci_ignore` | regex of check / status names that never hold an approve (preview deploys, advisory jobs) |
 | `PRR_ROOT_CAP` | `60000` | chars of the root Context Layer node inlined before it is condensed |
 | `PRR_CONTEXT_BUDGET` | `60000` | chars of nested nodes inlined in full; the rest are excerpted |
 | `PRR_NODE_EXCERPT` | `8000` | chars of priority sections kept per excerpted node |

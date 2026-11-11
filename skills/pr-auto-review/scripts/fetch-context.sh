@@ -14,6 +14,9 @@
 #   context-layer.md   Context Layer nodes (AGENTS.md) read at BASE_SHA — root in
 #                      full, nearest nodes in full while they fit, the rest excerpted
 #   nodes/             full text of every staged node (for the excerpted ones)
+#   profile.md         the repo's review profile (repos/<repo>/review.md) + the
+#                      checklist of each stack the changed files belong to
+#   risk-files.txt     changed files on a risk path — read in full, never skimmed
 #   status.env         DIFF_STATUS / CONTEXT_STATUS — post-review.sh refuses to
 #                      APPROVE a PR whose diff could not be read
 #   ci.txt             check status at fetch time (informational, often pending)
@@ -90,7 +93,13 @@ ASM="$(python3 "$HERE/context-assemble.py" "$DIR/.nodes.tsv" "$DIR/context-layer
   || { : > "$DIR/context-layer.md"; ASM=$'CONTEXT_NODES=0\nCONTEXT_NODES_EXCERPTED=0'; CONTEXT_STATUS=error; }
 [ "$CONTEXT_STATUS" = ok ] && [ "$i" -eq 0 ] && CONTEXT_STATUS=none
 
-printf 'DIFF_STATUS=%s\nDIFF_UNREAD=%s\nCONTEXT_STATUS=%s\n' "$DIFF_STATUS" "$DIFF_UNREAD" "$CONTEXT_STATUS" > "$DIR/status.env"
+# Review profile — repo notes + stack checklists + the risk files of this PR
+PROF="$(python3 "$HERE/resolve-profile.py" "$REPO" "$DIR/files.txt" "$DIR" 2>/dev/null)" \
+  || { PROF=$'PROFILE=error\nSTACKS=\nRISK_FILES=0\nCI_IGNORE='; : > "$DIR/profile.md"; : > "$DIR/risk-files.txt"; }
+CI_IGNORE="$(echo "$PROF" | sed -n 's/^CI_IGNORE=//p')"
+
+printf 'DIFF_STATUS=%s\nDIFF_UNREAD=%s\nCONTEXT_STATUS=%s\nCI_IGNORE=%s\n' \
+  "$DIFF_STATUS" "$DIFF_UNREAD" "$CONTEXT_STATUS" "$CI_IGNORE" > "$DIR/status.env"
 
 # Prior blockers — what the bot asked for last time (recheck mode reads this)
 : > "$DIR/prior-blockers.md"
@@ -108,5 +117,6 @@ echo "DIFF_UNREAD=$DIFF_UNREAD"
 echo "CONTEXT_STATUS=$CONTEXT_STATUS"
 echo "$ASM" | grep -E '^CONTEXT_NODES(_EXCERPTED)?='
 echo "CONTEXT_NODES_DROPPED=$NODES_DROPPED"
+echo "$PROF" | grep -E '^(PROFILE|STACKS|RISK_FILES)='
 echo "LINKED_ISSUES=$(grep -c '^## #' "$DIR/linked-issues.md")"
 echo "HAS_PRIOR_BLOCKERS=$([ -s "$DIR/prior-blockers.md" ] && echo 1 || echo 0)"
