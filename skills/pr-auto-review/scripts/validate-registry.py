@@ -10,7 +10,43 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _profiles import REPOS, glob_re, load_profile, repo_names, stack_names  # noqa: E402
+from _profiles import REPOS, ROOT, glob_re, load_profile, repo_names, stack_names  # noqa: E402
+import json  # noqa: E402
+
+EDGE_KEYS = {"id", "provider", "consumer", "coupling", "surface", "provider_paths", "consumer_paths", "provider_stage"}
+
+
+def check_relations(profiled):
+    """Errors in relations.json, plus the repos it names that have no profile yet."""
+    errs, unprofiled, ids = [], set(), set()
+    try:
+        with open(os.path.join(ROOT, "relations.json")) as fh:
+            edges = json.load(fh).get("edges")
+    except Exception as e:
+        return [f"relations.json is not valid JSON ({e})"], unprofiled
+    if not isinstance(edges, list):
+        return ['relations.json needs an "edges" list'], unprofiled
+    for e in edges:
+        eid = e.get("id") or "?"
+        if eid in ids:
+            errs.append(f"edge {eid!r}: duplicate id")
+        ids.add(eid)
+        for k in sorted(set(e) - EDGE_KEYS):
+            errs.append(f"edge {eid!r}: unknown key {k!r}")
+        for k in ("id", "provider", "consumer", "coupling", "surface", "provider_paths", "consumer_paths"):
+            if not e.get(k):
+                errs.append(f"edge {eid!r}: missing {k!r}")
+        if e.get("coupling") not in ("immediate", "deferred"):
+            errs.append(f"edge {eid!r}: coupling must be immediate or deferred")
+        if e.get("provider") and e.get("provider") == e.get("consumer"):
+            errs.append(f"edge {eid!r}: provider and consumer are the same repo")
+        for k in ("provider_paths", "consumer_paths", "provider_stage"):
+            if k in e and (not isinstance(e[k], list) or not all(isinstance(g, str) and g for g in e[k])):
+                errs.append(f"edge {eid!r}: {k!r} must be a list of globs")
+        if e.get("provider") not in profiled and e.get("consumer") not in profiled:
+            errs.append(f"edge {eid!r}: neither end has a profile in repos/ — the edge can never trigger")
+        unprofiled |= {r for r in (e.get("provider"), e.get("consumer")) if r and r not in profiled}
+    return errs, unprofiled
 
 KEYS = {"repo", "default_branch", "stacks", "risk_paths", "ci_ignore"}
 SECTIONS = ["## What breaks here", "## Not a blocker here"]
@@ -72,5 +108,10 @@ if __name__ == "__main__":
         for e in check(repo, stacks):
             print(f"{repo}: {e}")
             bad += 1
+    rel_errs, unprofiled = check_relations(set(repo_names()))
+    for e in rel_errs:
+        print(f"relations.json: {e}")
+        bad += 1
+    print(f"REGISTRY_UNPROFILED={','.join(sorted(unprofiled))}")
     print(f"REGISTRY_REPOS={len(repo_names())}\nREGISTRY_ERRORS={bad}")
     sys.exit(1 if bad else 0)

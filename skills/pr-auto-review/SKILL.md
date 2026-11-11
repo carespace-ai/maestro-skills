@@ -71,6 +71,12 @@ Files land in `$PRR_DIR`. Read, in this order:
    the PR**. Beyond those, for >1500 diff lines read what carries risk (migrations,
    auth, API handlers, shared contracts, config) and skim the rest.
 
+5. `relations.md` — only when `RELATIONS` > 0: the cross-repo contracts this PR
+   touches, which side of each this repo is on, and exactly what to verify. The
+   other repo's code is staged under `cross/<repo>/` — **search it** (Grep / Read)
+   rather than trusting what a doc says the other side does. `linked-prs.md` lists
+   PRs in other repos this PR's body points at, with their state.
+
 **Check `DIFF_STATUS` before judging anything:**
 - `ok` → carry on.
 - `partial` → GitHub omitted the patch of the files in `diff-unread.txt` (too large).
@@ -109,6 +115,14 @@ A finding is a **blocker** only if ALL three hold:
 "could use X", missing tests, refactors, comments/docs, non-critical performance,
 unlikely edge cases, convention drift described in AGENTS.md, anything CI linters
 already enforce. No "nits", no "consider", no praise lists.
+
+**Cross-repo breaks are judged by `relations.md`, not by instinct.** It says, per
+contract, whether a break is a blocker (the other repo meets the change at once) or
+a heads-up (the other repo is pinned to a release), and it tells you what to do when
+the other repo could not be staged. The three-part test still applies: a cross-repo
+blocker cites the line in this diff **and** the `file:line` in `cross/<repo>/` that
+would fail. When several contracts are touched and the single `⚠️ Heads-up` line
+is not enough, use one line per contract — that is the only exception to "at most one".
 
 The repo's "What breaks here" list and the stack checklists in `profile.md` are
 where to look first; "Not a blocker here" is binding — do not raise those.
