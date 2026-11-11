@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # post-review.sh — publish exactly ONE review on a PR.
 #
-# Usage: post-review.sh <REPO_FULL> <PR_NUMBER> <HEAD_SHA> <APPROVE|REQUEST_CHANGES> <BODY_FILE> [COMMENTS_JSON]
+# Usage: post-review.sh <REPO_FULL> <PR_NUMBER> <HEAD_SHA> <APPROVE|REQUEST_CHANGES|UNREVIEWED> <BODY_FILE> [COMMENTS_JSON]
+#
+#   UNREVIEWED     the PR could not be read (diff unavailable) — posted as a COMMENT
+#                  that says so; never counts as an approve
 #
 #   BODY_FILE      markdown review body written by the skill
 #   COMMENTS_JSON  optional file: [{"path": "...", "line": 42, "body": "..."}] — blockers only,
@@ -10,6 +13,15 @@
 # Appends the hidden idempotency marker `<!-- maestro-pr-review sha=<HEAD_SHA> verdict=<V> -->`
 # that should-run.sh uses to drop duplicate deliveries — never post a review without it.
 # The review is pinned to HEAD_SHA (commit_id) so it can't land on a newer, unreviewed push.
+#
+# An APPROVE is only ever posted for a PR that was actually read and is not red:
+#   - status.env (written by fetch-context.sh next to BODY_FILE) must say the diff
+#     was staged; DIFF_STATUS=missing, or no status.env at all → COMMENT, not approve
+#   - CI on HEAD_SHA is checked right before posting (waits up to PRR_CI_WAIT
+#     seconds, default 60, for running checks). Failing → COMMENT "not approving
+#     yet" (re-trigger: push, or comment `/maestro review` once CI is green).
+#     Still running → APPROVE with a note that the checks were not finished.
+#     PRR_CI_IGNORE = regex of check names that never count. PRR_CI_FILE = test seam.
 #
 # SHADOW=1 (or PRR_SHADOW=1) downgrades the event to COMMENT — shadow-mode rollout.
 # PRR_DRY_RUN=1 prints the payload instead of calling GitHub (tests).
@@ -20,24 +32,65 @@ source "$(dirname "${BASH_SOURCE[0]}")/_auth.sh"
 
 REPO="${1:?REPO_FULL}"; PR="${2:?PR_NUMBER}"; SHA="${3:?HEAD_SHA}"
 VERDICT="${4:?APPROVE|REQUEST_CHANGES}"; BODY_FILE="${5:?BODY_FILE}"; COMMENTS="${6:-}"
-case "$VERDICT" in APPROVE|REQUEST_CHANGES) ;; *) echo "ERROR=invalid verdict $VERDICT"; exit 2 ;; esac
+case "$VERDICT" in APPROVE|REQUEST_CHANGES|UNREVIEWED) ;; *) echo "ERROR=invalid verdict $VERDICT"; exit 2 ;; esac
 SHADOW="${SHADOW:-${PRR_SHADOW:-0}}"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TMP="$(mktemp -d)"
 
+# ── Approve gates — decide HOLD (why an APPROVE must not be posted) and NOTE ──
+HOLD=""; NOTE=""; CI_STATE=skipped
+if [ "$VERDICT" = APPROVE ]; then
+  STATUS_FILE="${PRR_DIR:-$(dirname "$BODY_FILE")}/status.env"
+  DIFF_STATUS="$(sed -n 's/^DIFF_STATUS=//p' "$STATUS_FILE" 2>/dev/null | head -1)"
+  case "$DIFF_STATUS" in
+    ok|partial) ;;
+    *) HOLD="unread"
+       NOTE="⏸️ **Not approved — I could not read this PR's diff** (\`DIFF_STATUS=${DIFF_STATUS:-unknown}\`), so nothing below is a review of the change. A human needs to review this one, or comment \`/maestro review\` to make me try again." ;;
+  esac
+fi
+if [ "$VERDICT" = APPROVE ] && [ -z "$HOLD" ] && { [ "${PRR_DRY_RUN:-0}" != "1" ] || [ -n "${PRR_CI_FILE:-}" ]; }; then
+  ci_fetch() {  # → $TMP/ci.json ; non-zero if GitHub could not be read
+    [ -n "${PRR_CI_FILE:-}" ] && { cp "$PRR_CI_FILE" "$TMP/ci.json"; return 0; }
+    gh api "repos/$REPO/commits/$SHA/check-runs?per_page=100" --jq '.check_runs' > "$TMP/runs.json" 2>/dev/null || return 1
+    gh api "repos/$REPO/commits/$SHA/status?per_page=100" --jq '.statuses' > "$TMP/statuses.json" 2>/dev/null || echo '[]' > "$TMP/statuses.json"
+    python3 -c 'import json,sys; json.dump({"check_runs": json.load(open(sys.argv[1])), "statuses": json.load(open(sys.argv[2]))}, open(sys.argv[3], "w"))' \
+      "$TMP/runs.json" "$TMP/statuses.json" "$TMP/ci.json"
+  }
+  WAIT="${PRR_CI_WAIT:-60}"; WAITED=0
+  while :; do
+    if ci_fetch; then CI_OUT="$(python3 "$HERE/ci-state.py" "$TMP/ci.json" 2>/dev/null)"; else CI_OUT="CI_STATE=unknown"; fi
+    CI_STATE="$(echo "$CI_OUT" | sed -n 's/^CI_STATE=//p')"; CI_STATE="${CI_STATE:-unknown}"
+    [ "$CI_STATE" = pending ] && [ "$WAITED" -lt "$WAIT" ] || break
+    sleep 15; WAITED=$((WAITED + 15))
+  done
+  CI_FAILED="$(echo "$CI_OUT" | sed -n 's/^CI_FAILED=//p')"; CI_PENDING="$(echo "$CI_OUT" | sed -n 's/^CI_PENDING=//p')"
+  case "$CI_STATE" in
+    failure) HOLD="ci"
+             NOTE="⏸️ **Not approving yet — CI is failing on this commit:** ${CI_FAILED}. The code review below found no blockers. Push a fix, or re-run CI and comment \`/maestro review\` when it is green." ;;
+    pending) NOTE="⏳ CI was still running when I posted this (${CI_PENDING}) — the approve covers the code, not the checks." ;;
+    unknown) NOTE="⚠️ I could not read the CI status of this commit — the approve covers the code, not the checks." ;;
+  esac
+fi
+
 build() {  # $1 = inline|folded
-  python3 - "$1" "$SHA" "$VERDICT" "$SHADOW" "$BODY_FILE" "${COMMENTS:-}" > "$TMP/payload.json" <<'PY'
+  python3 - "$1" "$SHA" "$VERDICT" "$SHADOW" "$BODY_FILE" "${COMMENTS:-}" "$HOLD" "$NOTE" "$CI_STATE" > "$TMP/payload.json" <<'PY'
 import json, sys
-mode, sha, verdict, shadow, body_file, comments_file = sys.argv[1:7]
+mode, sha, verdict, shadow, body_file, comments_file, hold, note, ci = sys.argv[1:10]
 body = open(body_file).read().rstrip()
 comments = json.load(open(comments_file)) if comments_file else []
-event = verdict
+event = "COMMENT" if (verdict == "UNREVIEWED" or hold) else verdict
+if note and hold:
+    body = f"> {note}\n\n{body}"
+elif note:
+    body = f"{body}\n\n> {note}"
 if shadow == "1":
     event = "COMMENT"
     body = f"> 🫥 **Shadow mode** — would have been `{verdict}`; not counted as a review.\n\n{body}"
 if mode == "folded" and comments:
     body += "\n\n---\n" + "\n".join(f"- `{c['path']}:{c['line']}` — {c['body']}" for c in comments)
     comments = []
-body += f"\n\n<!-- maestro-pr-review sha={sha} verdict={verdict} -->"
+extra = (f" held={hold}" if hold else "") + (f" ci={ci}" if ci not in ("skipped", "") else "")
+body += f"\n\n<!-- maestro-pr-review sha={sha} verdict={verdict}{extra} -->"
 payload = {"commit_id": sha, "event": event, "body": body}
 if comments:
     payload["comments"] = [{"path": c["path"], "line": int(c["line"]), "side": "RIGHT", "body": c["body"]}
@@ -59,6 +112,8 @@ else
   echo "ERROR=review post failed"; cat "$TMP/err.txt"; exit 1
 fi
 
+echo "CI_STATE=$CI_STATE"
+[ -z "$HOLD" ] || echo "APPROVE_HELD=$HOLD"
 python3 - "$TMP/resp.json" <<'PY'
 import json, sys
 r = json.load(open(sys.argv[1]))

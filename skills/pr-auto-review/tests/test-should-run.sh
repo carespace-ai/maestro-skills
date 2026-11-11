@@ -62,6 +62,18 @@ expect "comment on issue"         "$(PRR_PERMISSION=write guard "$(mutate commen
 OUT="$(PRR_PERMISSION=admin guard "$(cat "$FIX/comment-approve.json")" "$BLOCKED")"
 echo "$OUT" | grep -q '^OVERRIDE_BY=dev-bob$' || fail "override should report OVERRIDE_BY"; pass "override reports who"
 
+# /maestro review — fresh review of the current head, even if already reviewed
+PRF="$(mktemp)"; python3 -c 'import json,sys; json.dump(json.load(open(sys.argv[1]))["pull_request"], open(sys.argv[2],"w"))' "$FIX/pr-opened.json" "$PRF"
+REVIEW="$(mutate comment-approve.json 'p["comment"]["body"]="/maestro review"')"
+expect "/maestro review (write)"  "$(PRR_PERMISSION=write PRR_PR_FILE="$PRF" guard "$REVIEW")" RUN full
+expect "/maestro review, same SHA" "$(PRR_PERMISSION=write PRR_PR_FILE="$PRF" guard "$REVIEW" "$DUP")" RUN full
+expect "/maestro review, blocked" "$(PRR_PERMISSION=write PRR_PR_FILE="$PRF" guard "$REVIEW" "$BLOCKED")" RUN recheck
+expect "/maestro review (read)"   "$(PRR_PERMISSION=read PRR_PR_FILE="$PRF" guard "$REVIEW")" SKIP
+DRAFT="$(mktemp)"; python3 -c 'import json,sys; p=json.load(open(sys.argv[1])); p["draft"]=True; json.dump(p, open(sys.argv[2],"w"))' "$PRF" "$DRAFT"
+expect "/maestro review on draft" "$(PRR_PERMISSION=write PRR_PR_FILE="$DRAFT" guard "$REVIEW")" SKIP
+OUT="$(PRR_PERMISSION=write PRR_PR_FILE="$PRF" guard "$REVIEW")"
+echo "$OUT" | grep -q '^HEAD_SHA=aaaaaaa' || fail "/maestro review should report HEAD_SHA"; pass "/maestro review reports head"
+
 # override — label
 LABEL='p["action"]="labeled"; p["label"]={"name":"maestro:override"}; p["sender"]={"login":"lead-carol"}'
 expect "maestro:override label"   "$(guard "$(mutate pr-opened.json "$LABEL")" "$BLOCKED")" RUN override

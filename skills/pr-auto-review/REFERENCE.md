@@ -66,6 +66,29 @@ candidate** — it still has to pass the three-part test in SKILL.md STEP 3
    this endpoint (no HMAC) — treat it as a secret.
 4. **Label** `maestro:override` in each repo (optional; `/maestro approve` works without it).
 
+# Approve gates and tuning
+
+`post-review.sh` never posts an `APPROVE` for a PR that was not read or is red:
+
+| Situation | What is posted | Way back |
+|-----------|----------------|----------|
+| `status.env` absent or `DIFF_STATUS=missing` | COMMENT — "could not read this PR's diff" | `/maestro review`, or a human review |
+| CI failing on the head commit | COMMENT — "not approving yet", red checks named | push a fix, or re-run CI + `/maestro review` |
+| CI still running after `PRR_CI_WAIT` s | APPROVE + "CI was still running" note | — |
+| CI unreadable (API error) | APPROVE + "could not read CI" note | — |
+
+| Env var | Default | Meaning |
+|---------|---------|---------|
+| `PRR_CI_WAIT` | `60` | seconds to wait for running checks before posting (keep under the Bash tool timeout) |
+| `PRR_CI_IGNORE` | — | regex of check / status names that never hold an approve (preview deploys, advisory jobs) |
+| `PRR_ROOT_CAP` | `60000` | chars of the root Context Layer node inlined before it is condensed |
+| `PRR_CONTEXT_BUDGET` | `60000` | chars of nested nodes inlined in full; the rest are excerpted |
+| `PRR_NODE_EXCERPT` | `8000` | chars of priority sections kept per excerpted node |
+| `PRR_MAX_NODES` | `12` | Context Layer nodes fetched per PR |
+
+`/maestro review` (write access) re-reviews the current head even when that SHA
+already carries a review. `/maestro approve` still only clears a block.
+
 # Run locally against a real PR (no posting)
 
 ```bash

@@ -14,6 +14,11 @@
 #   override  — a human asked to clear the block (`/maestro approve` comment or
 #               `maestro:override` label) → dismiss the bot's blocking review
 #
+# A `/maestro review` comment (write access) asks for a fresh review of the
+# current head even if that SHA was already reviewed — the way back after the
+# bot held its approve for failing CI or an unreadable diff. It runs the same
+# guards as a PR event and routes to full or recheck.
+#
 # The inbound token webhook carries no X-GitHub-Event header, so the event type
 # is inferred from the payload shape. Parsing is python3 (always in the Maestro
 # image) — do NOT rely on jq. The skip guards (release-please, bots, own PRs,
@@ -21,7 +26,8 @@
 # never weaken them to a "RUN on parse failure" fallback.
 #
 # Test seams (no network): PRR_BOT_LOGIN, PRR_REVIEWS_FILE (JSON list of PR
-# reviews), PRR_PERMISSION (commenter's repo permission).
+# reviews), PRR_PERMISSION (commenter's repo permission), PRR_PR_FILE (the PR
+# object fetched for a `/maestro review` comment).
 set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/_auth.sh"
 
@@ -98,14 +104,18 @@ def latest_state(reviews):
     decisive = [r for r in reviews if r.get("state") in ("APPROVED", "CHANGES_REQUESTED", "DISMISSED")]
     return decisive[-1]["state"] if decisive else ""
 
+forced = False   # True for `/maestro review`: skip the same-SHA idempotency guard
+
 # ── Override via comment ─────────────────────────────────────────────────────
 if event == "issue_comment":
     number = p["issue"].get("number")
     body = ((p.get("comment") or {}).get("body") or "").strip()
     commenter = ((p.get("comment") or {}).get("user") or {}).get("login", "")
     out(PR_NUMBER=number, COMMENTER=commenter)
-    if action != "created" or not re.match(r"^/maestro\s+approve\b", body, re.I):
-        skip("comment is not a /maestro approve command")
+    m = re.match(r"^/maestro\s+(approve|review)\b", body, re.I) if action == "created" else None
+    if not m:
+        skip("comment is not a /maestro approve or /maestro review command")
+    command = m.group(1).lower()
     if commenter.lower() == bot.lower():
         skip("comment authored by the bot itself")
     perm = os.environ.get("PRR_PERMISSION")
@@ -116,10 +126,20 @@ if event == "issue_comment":
             skip(f"cannot read commenter permission ({e})")
     if perm not in ("admin", "maintain", "write"):
         skip(f"commenter {commenter} lacks write access (permission={perm})")
-    if latest_state(bot_reviews(number)) != "CHANGES_REQUESTED":
-        skip("no active bot CHANGES_REQUESTED review to clear")
-    out(OVERRIDE_BY=commenter)
-    run("override", f"/maestro approve by {commenter}")
+    if command == "approve":
+        if latest_state(bot_reviews(number)) != "CHANGES_REQUESTED":
+            skip("no active bot CHANGES_REQUESTED review to clear")
+        out(OVERRIDE_BY=commenter)
+        run("override", f"/maestro approve by {commenter}")
+    # /maestro review — load the PR (a comment payload has no head/base) and fall
+    # through to the pull_request guards below
+    try:
+        f = os.environ.get("PRR_PR_FILE")
+        pr = json.load(open(f)) if f else gh_api(f"repos/{repo_full}/pulls/{number}")
+    except Exception as e:
+        skip(f"cannot read PR for /maestro review ({e})")
+    action, forced = "rereview", True
+    out(ACTION=action, REQUESTED_BY=commenter)
 
 # ── pull_request events ──────────────────────────────────────────────────────
 number = pr.get("number") or p.get("number")
@@ -145,7 +165,7 @@ if action == "labeled":
     out(OVERRIDE_BY=sender)
     run("override", f"maestro:override label by {sender}")
 
-if action not in ("opened", "reopened", "ready_for_review", "synchronize"):
+if action not in ("opened", "reopened", "ready_for_review", "synchronize", "rereview"):
     skip(f"action {action!r} is not reviewed")
 if pr.get("draft"):
     skip("PR is a draft")
@@ -170,7 +190,7 @@ state = latest_state(reviews)
 marker = f"maestro-pr-review sha={head_sha}"
 
 # Idempotency — GitHub redeliveries and reopen-after-review
-if any(marker in (r.get("body") or "") for r in reviews):
+if not forced and any(marker in (r.get("body") or "") for r in reviews):
     skip("this head SHA was already reviewed (duplicate delivery)")
 
 if action == "synchronize":
