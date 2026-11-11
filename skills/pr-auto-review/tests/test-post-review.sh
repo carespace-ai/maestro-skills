@@ -79,4 +79,12 @@ OUT="$(PRR_HEAD_NOW=$SHA PRR_DRY_RUN=1 bash "$SCRIPTS/post-review.sh" o/r 1 $SHA
 M="$(mktemp -d)"; cp "$T/body.md" "$M/body.md"; printf 'DIFF_STATUS=missing\nHEAD_MOVED=1\n' > "$M/status.env"
 OUT="$(PRR_DRY_RUN=1 bash "$SCRIPTS/post-review.sh" o/r 1 $SHA UNREVIEWED "$M/body.md")"
 echo "$OUT" | grep -q '^REVIEW_SKIPPED=head-moved$' || fail "HEAD_MOVED in status.env must post nothing"; pass "head moved before staging → nothing posted"
+# delta scope is recorded in the marker (and only when the staging says so)
+D="$(mktemp -d)"; cp "$T/body.md" "$D/body.md"
+printf 'DIFF_STATUS=ok\nHUMAN_FILES=0\nREVIEW_SCOPE=delta\nDELTA_BASE=9f3e0715933410597b45f2f1bb8d3ab99b1af659\n' > "$D/status.env"
+P="$(PRR_DRY_RUN=1 bash "$SCRIPTS/post-review.sh" o/r 1 $SHA APPROVE "$D/body.md")"
+echo "$P" | field body | grep -q "verdict=APPROVE scope=delta base=9f3e07159334 -->" || fail "delta marker (got: $(echo "$P" | field body | tail -1))"; pass "delta review records its scope and base"
+printf 'DIFF_STATUS=ok\nHUMAN_FILES=0\nREVIEW_SCOPE=delta\nDELTA_BASE=$(id)\n' > "$D/status.env"
+P="$(PRR_DRY_RUN=1 bash "$SCRIPTS/post-review.sh" o/r 1 $SHA APPROVE "$D/body.md")"
+echo "$P" | field body | grep -q "scope=delta" && fail "a malformed base must not reach the marker"; pass "malformed delta base ignored"
 echo "ALL PASS"

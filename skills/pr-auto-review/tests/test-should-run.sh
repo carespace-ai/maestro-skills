@@ -51,8 +51,18 @@ expect "sync, blocked → recheck"  "$(guard "$SYNC" "$(reviews CHANGES_REQUESTE
 expect "sync, block dismissed"    "$(guard "$SYNC" "$(reviews DISMISSED:REQUEST_CHANGES)")" SKIP
 # "dismiss stale approvals on push": the bot's own approve turns DISMISSED on the
 # next push. That is not a human override — the new head must be reviewed.
-expect "sync, stale approve dismissed → re-review" "$(guard "$SYNC" "$(reviews DISMISSED:APPROVE)")" RUN full
-expect "sync, block fixed, approve went stale" "$(guard "$SYNC" "$(reviews CHANGES_REQUESTED:REQUEST_CHANGES DISMISSED:APPROVE)")" RUN full
+expect "sync, stale approve dismissed → review the push" "$(guard "$SYNC" "$(reviews DISMISSED:APPROVE)")" RUN delta
+expect "sync, block fixed, approve went stale" "$(guard "$SYNC" "$(reviews CHANGES_REQUESTED:REQUEST_CHANGES DISMISSED:APPROVE)")" RUN delta
+# delta: a push on a PR whose latest review was clean is reviewed from that commit
+OUT="$(guard "$SYNC" "$(reviews APPROVED:APPROVE)")"
+expect "sync, approved with marker → delta" "$OUT" RUN delta
+echo "$OUT" | grep -q '^DELTA_BASE=00c0ffee$' || fail "delta should report DELTA_BASE (got: $OUT)"; pass "delta reports its base commit"
+OUT="$(guard "$SYNC" "$(reviews APPROVED:APPROVE COMMENTED:APPROVE)")"
+echo "$OUT" | grep -q '^DELTA_BASE=01c0ffee$' || fail "delta base is the latest clean read (got: $OUT)"; pass "delta base is the latest clean read"
+expect "sync, held approve (CI) still a clean read" "$(guard "$SYNC" "$(reviews 'COMMENTED:APPROVE held=ci ci=failure')")" RUN delta
+expect "sync, unread diff is not a base" "$(guard "$SYNC" "$(reviews APPROVED:APPROVE 'COMMENTED:APPROVE held=unread')")" RUN full
+expect "sync, UNREVIEWED is not a base" "$(guard "$SYNC" "$(reviews APPROVED:APPROVE COMMENTED:UNREVIEWED)")" RUN full
+expect "opened never uses delta"  "$(guard "$(mutate pr-opened.json 'p["action"]="reopened"')" "$(reviews DISMISSED:APPROVE)")" RUN full
 expect "sync, dismissed without marker → re-review" "$(guard "$SYNC" "$(reviews DISMISSED)")" RUN full
 expect "sync, comment after block" "$(guard "$SYNC" "$(reviews CHANGES_REQUESTED COMMENTED)")" RUN recheck
 expect "reopened, blocked → recheck" "$(guard "$(mutate pr-opened.json 'p["action"]="reopened"')" "$(reviews CHANGES_REQUESTED)")" RUN recheck

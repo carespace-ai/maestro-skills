@@ -1,0 +1,105 @@
+{
+  "_doc": [
+    "Known-answer PRs for measuring the reviewer. Each case is a real merged PR, pinned to the commits it had.",
+    "kind=bug: the PR shipped a defect that a later PR had to fix (fixed_by). expect.any_keywords are regexes; the",
+    "review counts as having found the defect when one of them matches its text (body + inline comments).",
+    "kind=control: a PR with no known defect; the reviewer should approve it.",
+    "kind=preexisting: the PR touched code that already had a defect it did not introduce; the reviewer should approve (the bar is what this PR breaks) and ideally name it in a heads-up.",
+    "Run: scripts/eval-stage.sh <id> → review per evals/RUNNER.md → scripts/eval-grade.py. See README 'Measuring the reviewer'."
+  ],
+  "cases": [
+    {
+      "id": "mobile-272-strapi-populate-keys",
+      "kind": "bug",
+      "repo": "carespace-ai/carespace-mobile",
+      "pr": 272,
+      "base_sha": "4c3338f49a74db8791389fddb2451b6dcb6722df",
+      "head_sha": "fdabc29d526ccac7e4539420b4745a50e3434e20",
+      "truth": "StrapiApi.getProgramTemplateExercises asks Strapi to populate `video` / `image`, keys that neither content type has. Strapi v5 rejects the whole request with 400 'Invalid key', so every Standard routine shows \"This routine didn't load\".",
+      "fixed_by": "carespace-ai/carespace-mobile#314",
+      "needs": "cross-repo (the Strapi schema)",
+      "expect": {
+        "verdict": "REQUEST_CHANGES",
+        "paths": [
+          "lib/data/api/strapi_api.dart"
+        ],
+        "any_keywords": [
+          "populate",
+          "invalid key",
+          "strapi[^.\\n]{0,80}(schema|400|reject)"
+        ]
+      }
+    },
+    {
+      "id": "mobile-552-neck-rest-window",
+      "kind": "bug",
+      "repo": "carespace-ai/carespace-mobile",
+      "pr": 552,
+      "base_sha": "c4208a05ebff1ec2299b7b8d3ceacdf41b3469db",
+      "head_sha": "b1b634834e2d7e3ed2d11eb8e9eedd8b4e0d57c1",
+      "truth": "The neck rest pitch is a rolling window of the last 15 calibration frames, but the 'Start the movement now' cue plays while the scan is still calibrating. The window holds the already-moved head, so neck flexion and extension always read about 0° ('I didn't see much movement').",
+      "fixed_by": "carespace-ai/carespace-mobile#554",
+      "needs": "reading the caller (LiveScanShell._beginCount) next to the diff",
+      "expect": {
+        "verdict": "REQUEST_CHANGES",
+        "paths": [
+          "lib/features/omnirom"
+        ],
+        "any_keywords": [
+          "_neckRest",
+          "rest pitch",
+          "calibration frames?",
+          "rolling window",
+          "already mov"
+        ]
+      }
+    },
+    {
+      "id": "agent-18-voice-delete-substring",
+      "kind": "preexisting",
+      "repo": "carespace-ai/carespace-agent",
+      "pr": 18,
+      "base_sha": "2bc1d1e882ba05afdd5a7621ad5aa756bcc257da",
+      "head_sha": "1628c7083824521769996da1a47fc46ce4987c35",
+      "truth": "A spoken delete is confirmed when the item name is a raw substring of the phrase. 'delete banana' confirms deleting 'Ana', 'delete knee reviews' confirms 'Knee review', and a name with punctuation ('Maria S.') is refused. The substring match was already in confirmation_accepted at the base commit; this PR tightened the function around it and left it.",
+      "fixed_by": "carespace-ai/carespace-agent#19",
+      "needs": "the diff alone; the defect line is unchanged context",
+      "expect": {
+        "verdict": "APPROVE",
+        "paths": [
+          "src/carespace_agent/actions.py"
+        ],
+        "any_keywords": [
+          "substring",
+          "whole[- ]word",
+          "partial (word|match)",
+          "word boundar"
+        ]
+      }
+    },
+    {
+      "id": "mobile-796-control",
+      "kind": "control",
+      "repo": "carespace-ai/carespace-mobile",
+      "pr": 796,
+      "base_sha": "23af2f0478887bb84f9ec79c74c04d6ac613b9c2",
+      "head_sha": "fbf5bab1554e8b8073eeff3d1402ee67ea76879d",
+      "truth": "No known defect.",
+      "expect": {
+        "verdict": "APPROVE"
+      }
+    },
+    {
+      "id": "agent-19-control",
+      "kind": "control",
+      "repo": "carespace-ai/carespace-agent",
+      "pr": 19,
+      "base_sha": "5584dd59caf571de0bbd4980449dacbbcc0722b4",
+      "head_sha": "a3a031467aa147daa8c7a283fae19e3bee7d6ab8",
+      "truth": "No known defect (this is the fix for agent-18-voice-delete-substring).",
+      "expect": {
+        "verdict": "APPROVE"
+      }
+    }
+  ]
+}
