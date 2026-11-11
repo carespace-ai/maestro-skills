@@ -50,8 +50,10 @@ rm -rf "$DIR"; mkdir -p "$DIR/nodes"
 # Fail closed: until the diff is staged, this PR counts as unreadable.
 printf 'DIFF_STATUS=missing\nCONTEXT_STATUS=error\n' > "$DIR/status.env"
 
+# Only fields every gh release knows: an unknown --json field fails the whole call,
+# and the gh in the Maestro container is older than the one on a laptop.
 gh pr view "$PR" --repo "$REPO" \
-  --json number,title,body,author,labels,additions,deletions,changedFiles,headRefOid,baseRefName,closingIssuesReferences \
+  --json number,title,body,author,labels,additions,deletions,changedFiles,headRefOid,baseRefName \
   > "$DIR/pr.json" || { echo "ERROR=cannot read PR $REPO#$PR"; exit 1; }
 
 # `gh pr diff` below serves the CURRENT head; the review is pinned to $HEAD_SHA.
@@ -87,8 +89,13 @@ gh pr checks "$PR" --repo "$REPO" > "$DIR/ci.txt" 2>&1 || true
 
 # Linked issues — first 3, bodies capped
 : > "$DIR/linked-issues.md"
-python3 -c 'import json,sys; [print(i["number"]) for i in json.load(open(sys.argv[1])).get("closingIssuesReferences",[])[:3]]' "$DIR/pr.json" |
+# Asked through GraphQL, not as a `gh pr view` JSON field (older gh
+# rejects that field). Optional context: a failure here leaves the file empty.
+gh api graphql -f owner="${REPO%%/*}" -f name="${REPO##*/}" -F pr="$PR" \
+  -f query='query($owner:String!,$name:String!,$pr:Int!){repository(owner:$owner,name:$name){pullRequest(number:$pr){closingIssuesReferences(first:3){nodes{number}}}}}' \
+  --jq '.data.repository.pullRequest.closingIssuesReferences.nodes[].number' 2>/dev/null |
 while read -r n; do
+  [[ "$n" =~ ^[0-9]+$ ]] || continue
   gh issue view "$n" --repo "$REPO" --json number,title,body \
     --jq '"## #\(.number) \(.title)\n\n\(.body // "" | .[0:2000])\n"' >> "$DIR/linked-issues.md" 2>/dev/null
 done

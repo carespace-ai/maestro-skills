@@ -57,4 +57,35 @@ printf 'lib/a.dart\nlib/renamed.dart\n' > "$T/only.txt"
 python3 "$SCRIPTS/diff-fallback.py" --only "$T/only.txt" "$T/inc.raw" "$T/inc.patch" || fail "--only exit"
 grep -q MINE "$T/inc.patch" && grep -q RENAMED "$T/inc.patch" || fail "--only dropped a PR file"; pass "--only keeps the PR's files (renames too)"
 grep -q FROM-MAIN "$T/inc.patch" && fail "--only kept a file outside the PR"; pass "--only drops files outside the PR"
+# fetch-context.sh must survive an old gh: an unknown --json field fails the whole
+# `gh pr view` there, which stopped every review in production (2026-11-11).
+OLDGH="$(mktemp -d)"
+cat > "$OLDGH/gh" <<'SH'
+#!/usr/bin/env bash
+KNOWN=" number title body author labels additions deletions changedFiles headRefOid baseRefName state url "
+if [ "$1 $2" = "pr view" ]; then
+  while [ $# -gt 0 ]; do
+    if [ "$1" = "--json" ]; then
+      for f in ${2//,/ }; do
+        case "$KNOWN" in *" $f "*) ;; *) echo "Unknown JSON field: \"$f\"" >&2; exit 1 ;; esac
+      done
+    fi
+    shift
+  done
+  echo '{"number":7,"title":"t","body":"","author":{"login":"a"},"labels":[],"additions":0,"deletions":0,"changedFiles":0,"headRefOid":"abc","baseRefName":"main"}'
+  exit 0
+fi
+[ "$1 $2" = "api graphql" ] && { echo "graphql down" >&2; exit 1; }
+[ "$1" = "api" ] && { echo "[]"; exit 0; }
+exit 0
+SH
+chmod +x "$OLDGH/gh"
+OUT="$(PATH="$OLDGH:$PATH" PRR_DIR="$OLDGH/run" HEAD_SHA=abc bash "$SCRIPTS/fetch-context.sh" o/r 7 base123 bot 2>&1)"; RC=$?
+echo "$OUT" | grep -q 'ERROR=cannot read PR' && fail "fetch-context asks gh pr view for a field old gh does not know (got: $OUT)"
+[ -s "$OLDGH/run/pr.json" ] || fail "pr.json staged with an old gh (rc=$RC, got: $OUT)"
+[ -e "$OLDGH/run/linked-issues.md" ] || fail "a failing linked-issue lookup must not stop staging"
+pass "fetch-context works with an old gh and without linked issues"
+if grep -rn -- '--json' "$SCRIPTS"/*.sh | grep -q 'closingIssuesReferences'; then fail "closingIssuesReferences must not be a gh --json field"; fi
+pass "no gh --json field newer than the container's gh"
+rm -rf "$OLDGH"
 echo "ALL PASS"
