@@ -138,7 +138,7 @@ def main(argv):
     ctrl = [r for r in ran if r[1] in ("control", "preexisting")]
     print(f"SUMMARY bugs_caught={sum(r[3] == 'caught' for r in bugs)}/{len(bugs)} "
           f"bugs_flagged={sum(r[3] == 'flagged' for r in bugs)} "
-          f"controls_clean={sum(r[3] == 'clean' for r in ctrl)}/{len(ctrl)} "
+          f"controls_clean={sum(r[3] in GOOD for r in ctrl)}/{len(ctrl)} "
           f"not_run={len(rows) - len(ran)}")
     return 1 if bad else 0
 

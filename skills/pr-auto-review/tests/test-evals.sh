@@ -59,4 +59,28 @@ printf '{"cases":[{"id":"Bad Id","kind":"bug","repo":"o/r","pr":"1","base_sha":"
 OUT="$(PRR_EVAL_CASES="$T/bad.json" python3 "$G" --check)"; [ $? -eq 2 ] || fail "bad cases must exit 2"
 echo "$OUT" | grep -q 'ERROR=.*40-character' || fail "bad sha reported"; pass "malformed cases refused"
 OUT="$(PRR_EVAL_CASES="$T/bad.json" bash "$SCRIPTS/eval-stage.sh" nope)"; echo "$OUT" | grep -q '^ERROR=unknown or malformed case' || fail "eval-stage unknown case"; pass "eval-stage refuses an unknown case"
+# eval-run.sh: stages, reviews and grades with one command (reviewer and staging stubbed)
+R="$SCRIPTS/eval-run.sh"; B="$T/bin"; mkdir -p "$B"; rm -rf "$T/$CTRL"
+cat > "$B/stage" <<'SH'
+#!/usr/bin/env bash
+rm -rf "$PRR_EVAL_HOME/$1"; mkdir -p "$PRR_EVAL_HOME/$1" && echo "export PRR_DIR=$PRR_EVAL_HOME/$1" > "$PRR_EVAL_HOME/$1/run.env"
+SH
+cat > "$B/reviewer" <<'SH'
+#!/usr/bin/env bash
+# stub reviewer: approves; records whether the answers were reachable from the skill copy
+while [ $# -gt 0 ]; do [ "$1" = "--add-dir" ] && SKILL_COPY="$2"; shift; done
+[ -e "$SKILL_COPY/evals/cases.json" ] && touch "$PRR_EVAL_HOME/leak"
+[ -f "$SKILL_COPY/SKILL.md" ] && [ -f "$SKILL_COPY/evals/RUNNER.md" ] || exit 3
+[ -n "${STUB_SILENT:-}" ] && exit 0
+printf '{"event":"APPROVE","body":"ok\\n\\n<!-- maestro-pr-review sha=abc1234 verdict=APPROVE -->"}' > payload.json
+SH
+chmod +x "$B/stage" "$B/reviewer"
+OUT="$(PRR_EVAL_STAGE="$B/stage" PRR_EVAL_CLAUDE="$B/reviewer" bash "$R" $CTRL)" || fail "eval-run on a clean control must exit 0 (got: $OUT)"
+echo "$OUT" | grep -q "^$CTRL: reviewed$" || fail "eval-run reports the review (got: $OUT)"
+echo "$OUT" | grep -q "clean$" || fail "eval-run grades the case (got: $OUT)"; pass "eval-run stages, reviews and grades"
+[ -e "$T/leak" ] && fail "the reviewer's skill copy must not hold cases.json"; pass "reviewer copy has no answers"
+OUT="$(PRR_EVAL_STAGE="$B/stage" PRR_EVAL_CLAUDE="$B/reviewer" bash "$R" $BUG)"; [ $? -eq 1 ] || fail "a missed bug must exit 1 (got: $OUT)"; pass "eval-run fails on a miss"
+OUT="$(STUB_SILENT=1 PRR_EVAL_STAGE="$B/stage" PRR_EVAL_CLAUDE="$B/reviewer" bash "$R" $CTRL)"; [ $? -eq 2 ] || fail "no payload must exit 2 (got: $OUT)"
+echo "$OUT" | grep -q "^NOT_REVIEWED=$CTRL" || fail "eval-run names the case that was not reviewed"; pass "eval-run reports a review that produced nothing"
+OUT="$(PRR_EVAL_CLAUDE="$B/reviewer" bash "$R" nope 2>&1)"; [ $? -eq 2 ] || fail "unknown case must exit 2"; pass "eval-run refuses an unknown case"
 echo "ALL PASS"

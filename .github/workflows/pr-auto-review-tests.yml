@@ -1,0 +1,46 @@
+name: pr-auto-review tests
+
+# The skill's own checks: the script tests, the repo registry and the eval case
+# file. No network and no token are needed, so nothing here can post a review.
+
+on:
+  pull_request:
+    paths:
+      - "skills/pr-auto-review/**"
+      - ".github/workflows/pr-auto-review-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "skills/pr-auto-review/**"
+      - ".github/workflows/pr-auto-review-tests.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-auto-review-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: skills/pr-auto-review
+    steps:
+      - uses: actions/checkout@v4
+      - name: Script tests
+        run: |
+          set -uo pipefail
+          rc=0
+          for t in tests/test-*.sh; do
+            echo "::group::$t"
+            bash "$t" || { rc=1; echo "::error file=skills/pr-auto-review/$t::$t failed"; }
+            echo "::endgroup::"
+          done
+          exit "$rc"
+      - name: Repo registry
+        run: python3 scripts/validate-registry.py
+      - name: Eval cases
+        run: python3 scripts/eval-grade.py --check
