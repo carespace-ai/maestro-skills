@@ -279,5 +279,8 @@ The reviewer must not open `cases.json`; it holds the answers.
 ## Not built yet
 
 - Filtering webhook events in the Maestro backend, so a comment or label does
-  not start a full run just to skip.
+  not start a full run just to skip: open as `carespace-ai/maestro#10`, not
+  deployed. It repeats the payload-only skip rules of `scripts/should-run.sh`,
+  so a change to those rules (a new reviewed action, a new author rule) has to
+  be made in both places.
 - Running the eval set automatically (today it is run by hand).

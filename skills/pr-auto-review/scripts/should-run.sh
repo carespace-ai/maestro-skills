@@ -107,6 +107,10 @@ out(REPO_FULL=repo_full, ACTION=action, SHADOW=shadow)
 if not repo_full:
     skip("payload has no repository.full_name")
 
+# NOTE: the skips below that need only the payload (repo allowlist, event shape,
+# comment command, closed, label, action, draft, automation authors) are repeated
+# in the Maestro backend (`_pr_review_noise_reason` in webhooks.py) so no run is
+# started for them. Change one, change the other.
 # Optional rollout allowlist from the trigger's default input_kwargs
 allow = p.get("prr_repos") or []
 if allow and repo_full not in allow and repo_full.split("/")[-1] not in allow:
