@@ -35,6 +35,6 @@ skills:
     max_turns: 200
 
   - name: carespace-content-manager
-    description: "Carespace catalog authoring — exercises, programs, calendar templates, OmniROM programs and surveys in Strapi via the strapi-* MCP tools; draft-only when no Strapi connection is present. Vendored from carespace-ai/carespace-content-manager."
+    description: "Carespace catalog authoring — exercises, programs, calendar templates, OmniROM programs and surveys in Strapi via the strapi-* MCP tools; reads the Maestro secrets STRAPI_HOST, STRAPI_ADMIN_TOKEN and STRAPI_READ_TOKEN (draft-only when they are missing). Vendored from carespace-ai/carespace-content-manager."
     prompt: "/carespace-content-manager"
     max_turns: 80

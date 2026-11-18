@@ -31,6 +31,40 @@ look for a tool named `list_exercise`.
 **Connected?** Don't make the physio do anything. Greet them warmly — "You're connected to your
 Carespace catalog ✓ — what would you like to do today?" — and show the menu.
 
+**No `list_exercise` tool? Check the secrets before going to draft mode.** On Maestro (and any
+run where Strapi credentials are in the environment) the catalog is reached through a script
+instead of MCP tools. The script lives next to this SKILL.md; find it, then check:
+
+```bash
+ST="$HOME/.claude/skills/carespace-content-manager/scripts/strapi_tool.py"
+[ -f "$ST" ] || ST="$(find "$HOME/.claude/skills" /app -name strapi_tool.py -path '*carespace-content-manager*' 2>/dev/null | head -1)"
+python3 "$ST" check
+```
+
+Exit 0 means **connected via secrets**: treat the session exactly as connected, and wherever a
+flow names a Strapi tool (`list_exercise`, `create_exercise`, `update_*`, `publish_*`, …), run
+it as
+
+```bash
+python3 "$ST" call <tool> '<arguments-json>' --out /tmp/strapi-<step>.json
+```
+
+with the same arguments you would pass the tool, then read only what you need from the
+`--out` file (lists can be large). `isError: true` is a tool error — handle it as that flow
+says. `python3 "$ST" tools` lists what the Admin Token can do (heavy on the
+server; at most once per session). The job runners and mirror/snapshot scripts pick up the
+same secrets automatically, so no `--env` is needed. Never print, echo, or write a token value.
+
+The secrets (Maestro → Settings → Secrets, injected into every run as environment variables):
+
+| Secret | What it is |
+|---|---|
+| `STRAPI_HOST` | Strapi base URL, verbatim (`https://strapi.carespace.ai`); MCP is `<base>/mcp` |
+| `STRAPI_ADMIN_TOKEN` | Admin Token (Settings → Admin Tokens) — reads and writes |
+| `STRAPI_READ_TOKEN` | read-only API Token (Settings → API Tokens) — mirror and snapshots only |
+
+A non-zero exit (3 = secrets missing, 1 = Strapi refused or unreachable) means not connected.
+
 **Not connected? Switch to DRAFT MODE — don't just stop.** This skill does not set up the
 connection itself, and on some surfaces it can't exist at all: Claude chat and Cowork connect to
 tools through OAuth, while the Carespace catalog uses a fixed access code, so the two can't be
@@ -67,11 +101,12 @@ the physio.
 - **This skill is transport-agnostic.** It needs the `strapi-*` MCP tools present and, for the
   script-backed flows, credentials resolvable by `scripts/mcp_client.py`. How they got there is
   not this skill's concern. See `README.md` for the per-surface setup.
-- **The runners resolve credentials in order** (`scripts/mcp_client.py`): the `STRAPI_MCP_URL` /
-  `STRAPI_ADMIN_TOKEN` environment variables, then a named `strapi-<env>` registration in
-  `~/.claude.json` (what `claude mcp add` writes — the only way to hold several environments at
-  once), then a `.env` left by the Claude Code plugin if one is also installed. A named `--env`
-  always wins. `scripts/rest_client.py` reads `STRAPI_HOST` / `STRAPI_READ_TOKEN` the same way.
+- **The runners resolve credentials in order** (`scripts/mcp_client.py`): a named `strapi-<env>`
+  registration in `~/.claude.json` when `--env` is given (what `claude mcp add` writes — the
+  only way to hold several environments at once), then the `STRAPI_MCP_URL` (or `STRAPI_HOST` +
+  `/mcp`) / `STRAPI_ADMIN_TOKEN` environment variables, then a `.env` left by the Claude Code
+  plugin if one is also installed. `scripts/rest_client.py` reads `STRAPI_HOST` /
+  `STRAPI_READ_TOKEN` — the same names Maestro stores its secrets under.
 - Two distinct Strapi credential types, don't conflate them: the **Admin Token** (Settings →
   Admin Tokens) authenticates the `strapi-*` MCP connection this skill authors through. The
   **API Token** (Settings → API Tokens, read-only) is a separate REST credential used only by
