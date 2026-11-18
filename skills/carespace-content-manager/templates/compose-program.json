@@ -1,0 +1,53 @@
+{
+  "_comment": [
+    "compose-program job — build a program-template from EXISTING exercises.",
+    "Runner: scripts/runners/compose_program.py (kind: compose-program).",
+    "It verifies each exercise draft, creates one program-exercise-template join",
+    "per exercise (with the full dosing quintet), then the program-template that",
+    "links the joins. Every write lands as a DRAFT; publishing is a separate",
+    "publish-chain job after the physio signs off.",
+    "'_comment' is ignored by the runner — it reads only the keys below via plan.get().",
+    "Fields:",
+    "  kind                 : must be 'compose-program' (run_job.py dispatches on it).",
+    "  env                  : MCP registration name; `--env` on the CLI overrides it.",
+    "  program.name         : program-template.name (required).",
+    "  program.duration     : integer, required.",
+    "  program.durationType : enum days | weeks | months | years (required).",
+    "  program.body_regions / joints / functional_goals / reasons : optional arrays",
+    "     of canonical names, resolved to relations at run time (omit or [] if none).",
+    "  sessions_per_week    : integer >= 1; weeklyReps = sets * reps * sessions_per_week.",
+    "  exercises[]          : one entry per existing exercise —",
+    "     carespaceId : integer, the exercise's id (used for logging + step keys),",
+    "     documentId  : the exercise's documentId -> join.strapiExerciseId,",
+    "     sets, reps  : integers (dailyReps = sets * reps),",
+    "     order       : integer, UNIQUE across the list (step key is join:<order>).",
+    "  Resolve each documentId via list_exercise at plan time and replace the",
+    "  placeholders below before running."
+  ],
+  "kind": "compose-program",
+  "env": "strapi-171",
+  "program": {
+    "name": "Soccer conditioning — lateral hip focus",
+    "duration": 4,
+    "durationType": "weeks",
+    "functional_goals": [],
+    "reasons": []
+  },
+  "sessions_per_week": 3,
+  "exercises": [
+    {
+      "carespaceId": 101,
+      "documentId": "<documentId — resolve via list_exercise at plan time>",
+      "sets": 3,
+      "reps": 12,
+      "order": 1
+    },
+    {
+      "carespaceId": 102,
+      "documentId": "<documentId — resolve via list_exercise at plan time>",
+      "sets": 3,
+      "reps": 10,
+      "order": 2
+    }
+  ]
+}

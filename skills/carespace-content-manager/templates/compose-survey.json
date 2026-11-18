@@ -1,0 +1,48 @@
+{
+  "_comment": [
+    "compose-survey job — create survey-template-question rows, then the",
+    "survey-template that links them.",
+    "Runner: scripts/runners/compose_survey.py (kind: compose-survey).",
+    "Every write lands as a DRAFT; publish separately via a publish-chain job",
+    "(questions before the template).",
+    "'_comment' is ignored by the runner — it reads only the keys below via plan.get().",
+    "Fields:",
+    "  kind                 : must be 'compose-survey'.",
+    "  env                  : MCP registration name; `--env` overrides it.",
+    "  questions[]          : one entry per question —",
+    "     title       : string, required,",
+    "     description : text, required,",
+    "     questionType: enum rate | singleSelect | multiSelect | openText (required),",
+    "     scored      : boolean (optional, defaults false),",
+    "     order       : integer, UNIQUE across the list (step key is question:<order>).",
+    "  template.title       : string, required.",
+    "  template.description : text, required.",
+    "  template.clinicallyValidated : boolean — leave false unless the physio has",
+    "     explicitly attested clinical validation (the attestation happens at plan time).",
+    "  template.edit        : boolean (optional, defaults false)."
+  ],
+  "kind": "compose-survey",
+  "env": "strapi-171",
+  "questions": [
+    {
+      "title": "How would you rate your hip pain today?",
+      "description": "Rate current lateral hip pain at rest, 0 (none) to 10 (worst).",
+      "questionType": "rate",
+      "scored": true,
+      "order": 1
+    },
+    {
+      "title": "Which activities aggravate the pain?",
+      "description": "Select the activity that most reliably brings the pain on.",
+      "questionType": "singleSelect",
+      "scored": false,
+      "order": 2
+    }
+  ],
+  "template": {
+    "title": "Lateral hip pain — weekly check-in",
+    "description": "Short weekly self-report for patients following the lateral hip program.",
+    "clinicallyValidated": false,
+    "edit": false
+  }
+}

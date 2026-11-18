@@ -1,0 +1,59 @@
+{
+  "_comment": [
+    "compose-calendar job — create a calendar-program-template with INLINE day",
+    "components. Days are embedded in the payload, never separate records.",
+    "Runner: scripts/runners/compose_calendar.py (kind: compose-calendar).",
+    "Every referenced program/omni-rom/survey must ALREADY EXIST (create it via its",
+    "own job first). The template lands as a DRAFT.",
+    "'_comment' is ignored by the runner — it reads only the keys below via plan.get().",
+    "Fields:",
+    "  kind                    : must be 'compose-calendar'.",
+    "  env                     : MCP registration name; `--env` overrides it.",
+    "  template.name           : string, required.",
+    "  template.weeks          : integer 1-52 (required).",
+    "  template.experienceLevel: enum beginner | intermediate | advanced (required).",
+    "  days[]                  : one entry per scheduled day —",
+    "     dayNumber : integer >= 1 (required),",
+    "     order     : integer >= 0 (required),",
+    "     activityType : enum survey | evaluation | exercise | omniRom | posture |",
+    "        bodyComposition (required),",
+    "     ref       : { type, documentId } — REQUIRED for the relation-gated types,",
+    "        MUST BE OMITTED for evaluation / posture / bodyComposition (they gate no",
+    "        relation). ref.type must match the activityType's target:",
+    "          exercise -> program-template  (linked as exerciseProgram),",
+    "          omniRom  -> omni-rom-program  (linked as omniRomProgram),",
+    "          survey   -> survey-template   (linked as surveyTemplate)."
+  ],
+  "kind": "compose-calendar",
+  "env": "strapi-171",
+  "template": {
+    "name": "Lateral hip — 4 week calendar",
+    "weeks": 4,
+    "experienceLevel": "beginner"
+  },
+  "days": [
+    {
+      "dayNumber": 1,
+      "order": 0,
+      "activityType": "exercise",
+      "ref": {
+        "type": "program-template",
+        "documentId": "<documentId — resolve via list_program-template at plan time>"
+      }
+    },
+    {
+      "dayNumber": 3,
+      "order": 1,
+      "activityType": "survey",
+      "ref": {
+        "type": "survey-template",
+        "documentId": "<documentId — resolve via list_survey-template at plan time>"
+      }
+    },
+    {
+      "dayNumber": 5,
+      "order": 2,
+      "activityType": "evaluation"
+    }
+  ]
+}

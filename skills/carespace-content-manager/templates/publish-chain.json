@@ -1,0 +1,45 @@
+{
+  "_comment": [
+    "publish-chain job — the ONLY job that publishes. Publishes each target in",
+    "plan order (children FIRST — a published parent must never point at an",
+    "unpublished child).",
+    "Runner: scripts/runners/publish_chain.py (kind: publish-chain).",
+    "THE PUBLISH GATE: approved_by AND approved_at must BOTH be non-empty or the",
+    "runner REFUSES to run (both validate() and run() enforce it). They stay EMPTY",
+    "in this template on purpose — the physio's sign-off in the Review & publish",
+    "flow writes the prose approval into brief.md AND fills these two fields. Never",
+    "fill them on your own initiative.",
+    "MCP publish availability varies by token: if publish_<type> answers 'disabled'",
+    "the runner exits with code 2 and log.txt carries an ordered admin-UI click list",
+    "(children first) — hand that list to the physio to click Publish in Strapi admin.",
+    "'_comment' is ignored by the runner — it reads only the keys below via plan.get().",
+    "Fields:",
+    "  kind        : must be 'publish-chain'.",
+    "  env         : MCP registration name; `--env` overrides it.",
+    "  approved_by : physio's stated identity — filled ONLY at sign-off (empty here).",
+    "  approved_at : ISO timestamp of sign-off — filled ONLY at sign-off (empty here).",
+    "  targets[]   : ordered list, CHILDREN FIRST —",
+    "     type       : the SINGULAR type id (used as publish_<type>), e.g.",
+    "        program-exercise-template, program-template, survey-template-question,",
+    "        survey-template, omni-rom-program-exercise, omni-rom-program,",
+    "        calendar-program-template, exercise,",
+    "     documentId : the draft's documentId,",
+    "     label      : optional human label for the click-list/report."
+  ],
+  "kind": "publish-chain",
+  "env": "strapi-171",
+  "approved_by": "",
+  "approved_at": "",
+  "targets": [
+    {
+      "type": "program-exercise-template",
+      "documentId": "<join documentId>",
+      "label": "Soccer program — join #101"
+    },
+    {
+      "type": "program-template",
+      "documentId": "<program documentId>",
+      "label": "Soccer conditioning — lateral hip focus"
+    }
+  ]
+}

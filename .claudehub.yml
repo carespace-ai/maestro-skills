@@ -33,3 +33,8 @@ skills:
     description: "Autonomous BMAD story development — reads stories-output.md from the-oracle-backlog, manages sprint manifest, develops one story across all repos_affected, opens cross-repo PRs via multi-gitter"
     prompt: "/the-oracle-story-dev"
     max_turns: 200
+
+  - name: carespace-content-manager
+    description: "Carespace catalog authoring — exercises, programs, calendar templates, OmniROM programs and surveys in Strapi via the strapi-* MCP tools; draft-only when no Strapi connection is present. Vendored from carespace-ai/carespace-content-manager."
+    prompt: "/carespace-content-manager"
+    max_turns: 80
