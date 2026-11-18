@@ -19,9 +19,21 @@ class TestConfig(unittest.TestCase):
         c = rest_client.resolve_config()
         self.assertEqual(c, {"host":"https://h","token":"T"})
     def test_missing_raises(self):
-        os.environ.pop("STRAPI_HOST", None)
+        for k in ("STRAPI_HOST", "STRAPI_URL", "STRAPI_API_TOKEN"):
+            os.environ.pop(k, None)
         with self.assertRaises(ConfigError):
             rest_client.resolve_config()
+    def test_resolves_from_maestro_secret_names(self):
+        saved = {k: os.environ.pop(k, None) for k in ("STRAPI_HOST", "STRAPI_READ_TOKEN")}
+        try:
+            os.environ["STRAPI_URL"] = "https://m/"; os.environ["STRAPI_API_TOKEN"] = "RO"
+            self.assertEqual(rest_client.resolve_config(), {"host": "https://m", "token": "RO"})
+        finally:
+            for k in ("STRAPI_URL", "STRAPI_API_TOKEN"):
+                os.environ.pop(k, None)
+            for k, v in saved.items():
+                if v is not None:
+                    os.environ[k] = v
 
 class TestGetAll(unittest.TestCase):
     def test_walks_all_pages_with_populate(self):
