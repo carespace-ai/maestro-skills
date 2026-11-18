@@ -130,6 +130,7 @@ documented order. Any one of these is enough:
 |---|---|---|
 | MCP writes (job runners) | `STRAPI_MCP_URL`, `STRAPI_ADMIN_TOKEN` | a named `strapi-<env>` in `~/.claude.json` |
 | REST reads (mirror, snapshot) | `STRAPI_HOST`, `STRAPI_READ_TOKEN` | — |
+| **Maestro** (all of the above) | secrets `STRAPI_URL`, `STRAPI_ADMIN_TOKEN`, `STRAPI_API_TOKEN` | MCP endpoint is `STRAPI_URL` + `/mcp`; tool calls go through `scripts/strapi_tool.py` |
 
 Two distinct Strapi credentials, from two different menus — don't conflate them:
 

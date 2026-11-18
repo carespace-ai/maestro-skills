@@ -50,13 +50,20 @@ def _read_env_file(path):
         pass
     return values
 
+def _mcp_url_from_base(base):
+    """Maestro stores one STRAPI_URL secret (the Strapi base URL, used verbatim,
+    e.g. https://strapi.carespace.ai or https://preview.carespace.ai/strapi);
+    the MCP endpoint is <base>/mcp. STRAPI_MCP_URL, when set, wins."""
+    base = (base or "").strip().rstrip("/")
+    return f"{base}/mcp" if base else None
+
 def _plugin_registration(env_file=None):
     """The plugin's own MCP credentials, or None when not configured.
 
     Plain env vars take precedence so a caller can override without editing the
     hook-managed file.
     """
-    url = os.environ.get("STRAPI_MCP_URL")
+    url = os.environ.get("STRAPI_MCP_URL") or _mcp_url_from_base(os.environ.get("STRAPI_URL"))
     token = os.environ.get("STRAPI_ADMIN_TOKEN")
     if not url or not token:
         vals = _read_env_file(env_file or _DEFAULT_ENV_FILE)
@@ -97,7 +104,9 @@ def resolve_registration(env=None, path=None, env_file=None):
         detail = f"no MCP registration named '{env}' found in {path}"
     hint_env = env or "strapi-<env>"
     raise RegistrationError(
-        f"{detail}, and the plugin has no stored admin token. Either configure the "
+        f"{detail}, STRAPI_URL/STRAPI_MCP_URL + STRAPI_ADMIN_TOKEN are not set "
+        f"(in Maestro: add them as secrets), and the plugin has no stored admin token. "
+        f"Either configure the "
         f"plugin (/plugin configure carespace-content-manager@carespace-skills — set "
         f"the admin URL and Admin token, then /reload-plugins), or register the "
         f"environment by hand: claude mcp add --transport http {hint_env} "
@@ -157,6 +166,15 @@ class McpClient:
         except ValueError:
             payload = txt
         return bool(res.get("isError")), payload
+
+    def list_tools(self):
+        """Tool names the token exposes. tools/list is the heaviest call on the
+        5.47 MCP beta — call it once per session at most."""
+        self._handshake()
+        self._id += 1
+        r = self._rpc({"jsonrpc": "2.0", "id": 100 + self._id, "method": "tools/list",
+                       "params": {}})
+        return [t.get("name") for t in (r.get("result") or {}).get("tools") or []]
 
     @staticmethod
     def rows(payload):
