@@ -133,10 +133,20 @@ the physio.
 to consult it). It tells you what the team INTENDS — the postural patterns we assess, how they
 are explained to patients, which programs answer them — so drafts match it.
 
-- **At the start of a session** run `python3 scripts/ref_docs.py list` once (cheap) so you know
-  what's there. Read an `.about.md` only when its document is relevant to the request.
+- **At the start of a session** find the reader (it sits next to this SKILL.md, and your working
+  folder is usually somewhere else) and list the documents once (cheap) so you know what's there:
+
+  ```bash
+  RD="$HOME/.claude/skills/carespace-content-manager/scripts/ref_docs.py"
+  [ -f "$RD" ] || RD="$(find "$HOME/.claude" "$PWD" /app -name ref_docs.py -path '*carespace-content-manager*' 2>/dev/null | head -1)"
+  python3 "$RD" list
+  ```
+
+  Use `python3 "$RD" …` for every later call (shell variables don't survive between Bash calls —
+  repeat the two lines above, or use the full path it found). The `.about.md` files are in the
+  `reference-documents/` folder beside `scripts/`; read one only when its document is relevant.
 - **Before drafting** an exercise, program, calendar, OmniROM program or survey, check whether a
-  document covers the topic (`ref_docs.py search all "<pattern or body region>"`). If it does, pull
+  document covers the topic (`python3 "$RD" search all "<pattern or body region>"`). If it does, pull
   just the rows you need (`search` / `rows` with `--cols` and `--limit`; `values` to list a
   column's categories) — never `cat` or load a whole document.
 - **Use it as context, not as truth.** Clinical notes and "what helps" shape what you propose;
