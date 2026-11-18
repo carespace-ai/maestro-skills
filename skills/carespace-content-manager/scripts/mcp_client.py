@@ -51,9 +51,11 @@ def _read_env_file(path):
     return values
 
 def _mcp_url_from_base(base):
-    """Maestro stores one STRAPI_URL secret (the Strapi base URL, used verbatim,
-    e.g. https://strapi.carespace.ai or https://preview.carespace.ai/strapi);
-    the MCP endpoint is <base>/mcp. STRAPI_MCP_URL, when set, wins."""
+    """Maestro stores the Strapi base URL as the STRAPI_HOST secret (used
+    verbatim, e.g. https://strapi.carespace.ai or
+    https://preview.carespace.ai/strapi); the MCP endpoint is <base>/mcp.
+    STRAPI_MCP_URL, when set, wins. Only used alongside STRAPI_ADMIN_TOKEN, so
+    the read-only pair (STRAPI_HOST + STRAPI_READ_TOKEN) is never an MCP login."""
     base = (base or "").strip().rstrip("/")
     return f"{base}/mcp" if base else None
 
@@ -63,7 +65,7 @@ def _plugin_registration(env_file=None):
     Plain env vars take precedence so a caller can override without editing the
     hook-managed file.
     """
-    url = os.environ.get("STRAPI_MCP_URL") or _mcp_url_from_base(os.environ.get("STRAPI_URL"))
+    url = os.environ.get("STRAPI_MCP_URL") or _mcp_url_from_base(os.environ.get("STRAPI_HOST"))
     token = os.environ.get("STRAPI_ADMIN_TOKEN")
     if not url or not token:
         vals = _read_env_file(env_file or _DEFAULT_ENV_FILE)
@@ -104,7 +106,7 @@ def resolve_registration(env=None, path=None, env_file=None):
         detail = f"no MCP registration named '{env}' found in {path}"
     hint_env = env or "strapi-<env>"
     raise RegistrationError(
-        f"{detail}, STRAPI_URL/STRAPI_MCP_URL + STRAPI_ADMIN_TOKEN are not set "
+        f"{detail}, STRAPI_HOST (or STRAPI_MCP_URL) + STRAPI_ADMIN_TOKEN are not set "
         f"(in Maestro: add them as secrets), and the plugin has no stored admin token. "
         f"Either configure the "
         f"plugin (/plugin configure carespace-content-manager@carespace-skills — set "

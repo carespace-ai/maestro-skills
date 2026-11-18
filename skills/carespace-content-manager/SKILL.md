@@ -59,9 +59,9 @@ The secrets (Maestro → Settings → Secrets, injected into every run as enviro
 
 | Secret | What it is |
 |---|---|
-| `STRAPI_URL` | Strapi base URL, verbatim (`https://strapi.carespace.ai`); MCP is `<base>/mcp` |
+| `STRAPI_HOST` | Strapi base URL, verbatim (`https://strapi.carespace.ai`); MCP is `<base>/mcp` |
 | `STRAPI_ADMIN_TOKEN` | Admin Token (Settings → Admin Tokens) — reads and writes |
-| `STRAPI_API_TOKEN` | read-only API Token (Settings → API Tokens) — mirror and snapshots only |
+| `STRAPI_READ_TOKEN` | read-only API Token (Settings → API Tokens) — mirror and snapshots only |
 
 A non-zero exit (3 = secrets missing, 1 = Strapi refused or unreachable) means not connected.
 
@@ -103,10 +103,10 @@ the physio.
   not this skill's concern. See `README.md` for the per-surface setup.
 - **The runners resolve credentials in order** (`scripts/mcp_client.py`): a named `strapi-<env>`
   registration in `~/.claude.json` when `--env` is given (what `claude mcp add` writes — the
-  only way to hold several environments at once), then the `STRAPI_MCP_URL` (or `STRAPI_URL` +
+  only way to hold several environments at once), then the `STRAPI_MCP_URL` (or `STRAPI_HOST` +
   `/mcp`) / `STRAPI_ADMIN_TOKEN` environment variables, then a `.env` left by the Claude Code
   plugin if one is also installed. `scripts/rest_client.py` reads `STRAPI_HOST` /
-  `STRAPI_READ_TOKEN`, falling back to the Maestro names `STRAPI_URL` / `STRAPI_API_TOKEN`.
+  `STRAPI_READ_TOKEN` — the same names Maestro stores its secrets under.
 - Two distinct Strapi credential types, don't conflate them: the **Admin Token** (Settings →
   Admin Tokens) authenticates the `strapi-*` MCP connection this skill authors through. The
   **API Token** (Settings → API Tokens, read-only) is a separate REST credential used only by

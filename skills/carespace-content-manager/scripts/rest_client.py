@@ -34,13 +34,8 @@ def resolve_config(host_env="STRAPI_HOST", token_env="STRAPI_READ_TOKEN"):
         file_values = _read_env_file(_DEFAULT_ENV_FILE)
         host = host or file_values.get(host_env)
         token = token or file_values.get(token_env)
-    # Maestro secret names: STRAPI_URL (base URL) + STRAPI_API_TOKEN (the
-    # read-only API Token). Used only when the names above are not set.
-    host = host or os.environ.get("STRAPI_URL")
-    token = token or os.environ.get("STRAPI_API_TOKEN")
     if not host or not token:
-        raise ConfigError(f"set {host_env} and {token_env} (read token) in the environment, "
-                          f"or the Maestro secrets STRAPI_URL and STRAPI_API_TOKEN")
+        raise ConfigError(f"set {host_env} and {token_env} (read token) in the environment")
     return {"host": host.rstrip("/"), "token": token}
 
 def _default_transport(method, url, headers):

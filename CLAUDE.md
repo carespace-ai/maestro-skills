@@ -75,4 +75,4 @@ Bundle related small tasks into one agent — don't spawn for trivial work.
 | `serena`, `code-graph-mcp` | oracle-pipeline (large-codebase nav) |
 | `COVERAGE_THRESHOLD` | optional override (default 80) |
 | `NOTIFICATION_WEBHOOK_URL` | optional pipeline-complete ping |
-| `STRAPI_URL`, `STRAPI_ADMIN_TOKEN`, `STRAPI_API_TOKEN` | carespace-content-manager (Strapi base URL, Admin Token for MCP reads/writes, read-only API Token for REST) |
+| `STRAPI_HOST`, `STRAPI_ADMIN_TOKEN`, `STRAPI_READ_TOKEN` | carespace-content-manager (Strapi base URL, Admin Token for MCP reads/writes, read-only API Token for REST) |

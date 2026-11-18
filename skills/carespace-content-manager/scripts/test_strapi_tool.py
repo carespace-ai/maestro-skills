@@ -22,11 +22,11 @@ def fake_factory(calls):
 class TestStrapiTool(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.mkdtemp()
-        self.env = mock.patch.dict(os.environ, {"STRAPI_URL": "https://s.example/",
+        self.env = mock.patch.dict(os.environ, {"STRAPI_HOST": "https://s.example/",
                                                 "STRAPI_ADMIN_TOKEN": SECRET,
-                                                "STRAPI_API_TOKEN": "RO"})
+                                                "STRAPI_READ_TOKEN": "RO"})
         self.env.start()
-        for k in ("STRAPI_MCP_URL", "STRAPI_HOST", "STRAPI_READ_TOKEN"):
+        for k in ("STRAPI_MCP_URL",):
             os.environ.pop(k, None)
         self.calls = []
         self.patch = mock.patch.object(mcp_client, "_default_transport_factory",

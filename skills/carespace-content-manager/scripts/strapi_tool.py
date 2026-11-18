@@ -3,11 +3,11 @@
 loaded (Maestro). Credentials come from the environment, which is where
 Maestro puts its secrets:
 
-  STRAPI_URL          Strapi base URL, verbatim (MCP endpoint = <base>/mcp)
+  STRAPI_HOST         Strapi base URL, verbatim (MCP endpoint = <base>/mcp)
   STRAPI_ADMIN_TOKEN  Admin Token: MCP reads and writes
-  STRAPI_API_TOKEN    read-only API Token: REST (mirror, snapshots)
+  STRAPI_READ_TOKEN   read-only API Token: REST (mirror, snapshots)
 
-STRAPI_MCP_URL / STRAPI_HOST / STRAPI_READ_TOKEN still work and win when set.
+STRAPI_MCP_URL, when set, overrides the derived MCP endpoint.
 
 Usage:
   strapi_tool.py check                      connection status (exit 0 = reachable)

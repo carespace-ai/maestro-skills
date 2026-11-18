@@ -59,7 +59,7 @@ class TestPluginRegistrationFallback(unittest.TestCase):
         self.claude_json = os.path.join(self.dir, "claude.json")
         # Plain env vars take precedence over the file; keep them out of the way.
         self._saved = {k: os.environ.pop(k, None)
-                       for k in ("STRAPI_MCP_URL", "STRAPI_ADMIN_TOKEN", "STRAPI_URL")}
+                       for k in ("STRAPI_MCP_URL", "STRAPI_ADMIN_TOKEN", "STRAPI_HOST")}
 
     def tearDown(self):
         for k, v in self._saved.items():
@@ -127,7 +127,7 @@ class TestPluginRegistrationFallback(unittest.TestCase):
 
     def test_maestro_secrets_base_url_derives_mcp_endpoint(self):
         missing = os.path.join(self.dir, "no.env")
-        os.environ["STRAPI_URL"] = "https://preview.carespace.ai/strapi/"
+        os.environ["STRAPI_HOST"] = "https://preview.carespace.ai/strapi/"
         os.environ["STRAPI_ADMIN_TOKEN"] = "ADM"
         reg = mcp_client.resolve_registration(None, path=self.claude_json, env_file=missing)
         self.assertEqual(reg["url"], "https://preview.carespace.ai/strapi/mcp")
@@ -135,7 +135,7 @@ class TestPluginRegistrationFallback(unittest.TestCase):
 
     def test_explicit_mcp_url_wins_over_base_url(self):
         missing = os.path.join(self.dir, "no.env")
-        os.environ["STRAPI_URL"] = "https://base"
+        os.environ["STRAPI_HOST"] = "https://base"
         os.environ["STRAPI_MCP_URL"] = "https://explicit/mcp"
         os.environ["STRAPI_ADMIN_TOKEN"] = "ADM"
         reg = mcp_client.resolve_registration(None, path=self.claude_json, env_file=missing)
@@ -143,7 +143,7 @@ class TestPluginRegistrationFallback(unittest.TestCase):
 
     def test_base_url_without_admin_token_is_not_a_registration(self):
         missing = os.path.join(self.dir, "no.env")
-        os.environ["STRAPI_URL"] = "https://base"
+        os.environ["STRAPI_HOST"] = "https://base"
         with self.assertRaises(mcp_client.RegistrationError):
             mcp_client.resolve_registration(None, path=self.claude_json, env_file=missing)
 
