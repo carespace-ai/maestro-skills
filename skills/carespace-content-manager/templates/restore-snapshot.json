@@ -1,0 +1,7 @@
+{
+  "_comment": "restore-snapshot: replay a captured authored-content snapshot onto this catalog. DRAFT-SAFE — writes go through update_exercise (document service), never publish, review_status forced unreviewed; a clinician still approves in Review & publish. 'snapshot' is a path to the snapshot json (absolute, or relative to this job folder); produce one with scripts/capture_snapshot.py or use the repo's scripts/migrations/data/authored-content.json. Records match this catalog by carespaceId; relations resolve by name (a name absent from this catalog's canonical vocab is skipped + reported, never invented); missing equipment terms are created. Idempotent: a draft already carrying movement_complexity is skipped unless force=true.",
+  "kind": "restore-snapshot",
+  "env": "strapi-171",
+  "snapshot": "./authored-content.json",
+  "force": false
+}

@@ -51,6 +51,7 @@
 | gstack Pipeline | one issue → one PR (bug-tracker driven) | multi-story orchestration |
 | SecDevOps | finding/reporting security risk | fixing it; product code |
 | PM Workflows | sprint/backlog/standup coordination | product code |
+| Content Manager | Strapi catalog authoring (exercises, programs, calendars, OmniROM, surveys) | patient data; Strapi connection setup |
 
 ## Dependency Direction
 
@@ -73,6 +74,7 @@ carespace-security-standards ──▶ carespace-security-auditor / code-review 
 | pipeline | target repo | branch + one PR | Repo from issue `Repository` field |
 | _pm-shared | pm-* + security skills | `context.sh` exports | Allow-listed channels + fixed IDs only |
 | carespace-code-review | Slack `#pm-engineering` | findings summary | Mandatory Step 6; counts must match |
+| carespace-content-manager | Strapi (`strapi-*` MCP) | drafts; publish only in its §7 flow | Vendored copy of `carespace-ai/carespace-content-manager` — change it there first, then re-sync |
 | pr-auto-review | GitHub PR | one review per head SHA (`<!-- maestro-pr-review sha=… -->`) | Never REQUEST_CHANGES without file:line + scenario; Slack only on blocks |
 
 ## Shared Conventions

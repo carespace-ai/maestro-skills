@@ -1,0 +1,37 @@
+name: carespace-content-manager tests
+
+# Stdlib-only unit tests for the skill's job runners, catalog mirror and
+# snapshot scripts. No network and no Strapi token, so nothing here writes.
+
+on:
+  pull_request:
+    paths:
+      - "skills/carespace-content-manager/**"
+      - ".github/workflows/carespace-content-manager-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "skills/carespace-content-manager/**"
+      - ".github/workflows/carespace-content-manager-tests.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: carespace-content-manager-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: skills/carespace-content-manager/scripts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Script tests
+        run: python3 -m unittest discover -s . -p "test_*.py" -v
