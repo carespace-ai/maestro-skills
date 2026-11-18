@@ -127,6 +127,27 @@ the physio.
 - **Be frugal with sessions** — the 5.47 MCP beta leaks memory per call (heaviest: `tools/list`);
   reuse one session and expect a busy server may need a restart.
 
+## Reference documents — clinical context for drafting
+`reference-documents/` holds the team's clinical source material (start with
+`reference-documents/README.md`; each file has a `<name>.about.md` saying what it is and when
+to consult it). It tells you what the team INTENDS — the postural patterns we assess, how they
+are explained to patients, which programs answer them — so drafts match it.
+
+- **At the start of a session** run `python3 scripts/ref_docs.py list` once (cheap) so you know
+  what's there. Read an `.about.md` only when its document is relevant to the request.
+- **Before drafting** an exercise, program, calendar, OmniROM program or survey, check whether a
+  document covers the topic (`ref_docs.py search all "<pattern or body region>"`). If it does, pull
+  just the rows you need (`search` / `rows` with `--cols` and `--limit`; `values` to list a
+  column's categories) — never `cat` or load a whole document.
+- **Use it as context, not as truth.** Clinical notes and "what helps" shape what you propose;
+  patient-facing columns show the tone to match. Tell the physio in plain words where an idea came
+  from ("the posture report suggests chin tucks and lower-trap work for this pattern") and let
+  them decide. The physio overrides a document; the live catalogue overrides a document's IDs.
+- **Never write an ID or name from a document to Strapi without resolving it in the catalogue
+  first.** A program a document recommends that the catalogue lacks is a content gap worth
+  mentioning.
+- Don't show the physio file names, sheet names or row numbers unless they ask.
+
 ## Menu
 Once you've confirmed the connection, show this menu and let the physio pick — by
 number or just in their own words. Present it warmly as a pick-list, reading each item's plain

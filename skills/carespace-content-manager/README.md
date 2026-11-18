@@ -167,6 +167,7 @@ Worth being deliberate about, since this skill writes to a production clinical s
 ```
 SKILL.md              the skill itself — flows, rules, and the connection check
 references/           field-level truth per content type, vocabularies, model map, recipes
+reference-documents/  clinical source material (e.g. postural-report.xlsx) read via scripts/ref_docs.py — see its README to add one
 templates/            job templates for the multi-write flows
 scripts/              Python helpers: job runners, catalog mirror, snapshots (stdlib only)
 ```
